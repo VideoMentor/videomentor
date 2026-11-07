@@ -247,7 +247,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
     last_seen TEXT NOT NULL,
-    user_agent TEXT
+    user_agent TEXT,
+    -- What the device says it is when its browser hides it (iPad Safari reports "Mac").
+    device_hint TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sync_runs (
@@ -312,6 +314,9 @@ def init(conn: sqlite3.Connection) -> None:
             if backfill:
                 conn.execute(backfill)
     conn.executescript(SCHEMA)
+    session_cols = {r["name"] for r in conn.execute("PRAGMA table_info(sessions)")}
+    if "device_hint" not in session_cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN device_hint TEXT")
     conn.commit()
 
 

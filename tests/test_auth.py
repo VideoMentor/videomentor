@@ -151,3 +151,20 @@ def test_scripts_cannot_sign_out_every_device(conn):
     with TestClient(app()) as c:
         r = c.post("/api/devices/sign-out-others", headers={"Authorization": "Bearer 123456789012"})
         assert r.status_code == 400
+
+
+def test_an_ipad_behind_a_mac_browser_gets_its_own_label(conn):
+    mac_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605 Version/27 Safari/605"
+    with TestClient(app()) as ipad:
+        ipad.get("/pair?code=123456789012", follow_redirects=False, headers={"user-agent": mac_ua})
+        assert ipad.get("/api/devices").json()["devices"][0]["device"] == "Mac · Safari"
+        assert ipad.post("/api/devices/me", json={"hint": "iPad"}).json() == {"ok": True}
+        assert ipad.get("/api/devices").json()["devices"][0]["device"] == "iPad · Safari"
+        assert ipad.post("/api/devices/me", json={"hint": "Toaster"}).json() == {"ok": False}
+    with TestClient(app()) as script:
+        r = script.post(
+            "/api/devices/me",
+            json={"hint": "iPad"},
+            headers={"Authorization": "Bearer 123456789012"},
+        )
+        assert r.status_code == 400

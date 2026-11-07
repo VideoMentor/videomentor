@@ -10,6 +10,7 @@ import { ActionsScreen } from './screens/ActionsScreen';
 import { TrainScreen } from './screens/TrainScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { initialTab, rememberTab } from './state/startScreen';
+import { reportDevice } from './lib/deviceHint';
 import { onNavigate } from './state/nav';
 import { PairScreen } from './screens/PairScreen';
 import { TabBar, type Tab } from './components/TabBar';
@@ -46,6 +47,7 @@ export function App() {
     try {
       const s = await api.status();
       setStatus(s);
+      reportDevice(); // signed in now: label an iPad correctly
       setSeenIds(new Set());
       setStatusError(null);
     } catch (err) {

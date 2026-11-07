@@ -65,6 +65,10 @@ class UndoIn(BaseModel):
     decision_id: int | None = None
 
 
+class DeviceHintIn(BaseModel):
+    hint: str = Field(max_length=20)
+
+
 class GroupIn(BaseModel):
     anchor_item_id: str
 
@@ -220,6 +224,13 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             "devices": auth.list_sessions(c, request.state.session),
             "expire_days": auth.SESSION_DAYS,
         }
+
+    @app.post("/api/devices/me", dependencies=[api])
+    def device_hint(request: Request, body: DeviceHintIn, c: sqlite3.Connection = Depends(conn)):
+        """The app reports an iPad that its browser presents as a Mac."""
+        if not request.state.session:
+            raise HTTPException(400, "only a paired device can describe itself")
+        return {"ok": auth.set_hint(c, request.state.session, body.hint)}
 
     @app.delete("/api/devices/{device_id}", dependencies=[api])
     def device_sign_out(device_id: str, c: sqlite3.Connection = Depends(conn)):

@@ -200,6 +200,8 @@ export const api = {
 
   signOutDevice: (id: string) => request<{ ok: boolean }>(`/api/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  deviceHint: (hint: 'iPad') => request<{ ok: boolean }>('/api/devices/me', { body: { hint } }),
+
   signOutOthers: () => request<{ signed_out: number }>('/api/devices/sign-out-others', { method: 'POST' }),
 
   settings: (signal?: AbortSignal) => request<SignalSettings>('/api/settings', { signal }),

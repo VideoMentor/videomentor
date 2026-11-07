@@ -129,14 +129,15 @@ def check_session(conn: sqlite3.Connection, token: str) -> str | None:
 
 def list_sessions(conn: sqlite3.Connection, current: str | None = None) -> list[dict]:
     rows = conn.execute(
-        "SELECT token_hash, created_at, last_seen, user_agent FROM sessions ORDER BY last_seen DESC"
+        "SELECT token_hash, created_at, last_seen, user_agent, device_hint FROM sessions"
+        " ORDER BY last_seen DESC"
     ).fetchall()
     return [
         {
             "id": r[0][:16],
             "created_at": r[1],
             "last_seen": r[2],
-            "device": describe_agent(r[3]),
+            "device": describe_agent(r[3], r[4]),
             "current": r[0] == current,
         }
         for r in rows
@@ -159,9 +160,23 @@ def sign_out_others(conn: sqlite3.Connection, keep: str | None) -> int:
     return n
 
 
-def describe_agent(ua: str | None) -> str:
-    """ "iPhone · Safari", "Mac · Chrome", or "Unknown device"."""
+HINTS = {"iPad"}  # device names the app may report about itself
+
+
+def set_hint(conn: sqlite3.Connection, session_id: str, hint: str) -> bool:
+    """Record what a device says it is (the app checks for an iPad behind a Mac browser)."""
+    if hint not in HINTS or not session_id:
+        return False
+    conn.execute("UPDATE sessions SET device_hint = ? WHERE token_hash = ?", (hint, session_id))
+    conn.commit()
+    return True
+
+
+def describe_agent(ua: str | None, hint: str | None = None) -> str:
+    """'iPhone · Safari', 'Mac · Chrome', or 'Unknown device'."""
     ua = ua or ""
+    if hint in HINTS:  # iPad Safari reports itself as a Mac
+        ua = ua.replace("Macintosh", hint)
     device = next(
         (name for key, name in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
                                 ("Macintosh", "Mac"), ("Windows", "Windows"), ("Linux", "Linux")) if key in ua),
