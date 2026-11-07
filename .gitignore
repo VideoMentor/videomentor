@@ -1,0 +1,56 @@
+.DS_Store
+.env
+*.local.md
+.claude/settings.local.json
+
+
+# Private and secrets (never commit)
+PRIVATE*
+*PRIVATE*
+.env.*
+!.env.example
+*secret*
+*secrets*
+*.pem
+*.key
+
+# Library data lives outside the repo (~/VideoMentor/), but guard anyway
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+library/
+items/
+
+# Media and raw captures
+*.mp4
+*.mov
+*.mp3
+*.m4a
+*.wav
+*.pdf
+*.zip
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# Node / UI
+node_modules/
+out/
+.vite/
+
+# OS / editor
+*.log
+
+# Brainstorm mockups
+.superpowers/
+
+# Build counter (changes every build)
+.build-seq
