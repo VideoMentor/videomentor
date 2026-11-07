@@ -47,6 +47,7 @@ uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone
 | `vm render <module>` | Render a module as one narrated video (personal use only, see below). |
 | `vm tags` | Review proposed tag merges; `--draft` suggests new ones. |
 | `vm transcripts` | Keep transcripts for analyzed videos that don't have one. |
+| `vm import-library <folder>` | Copy a library folder (for example from an older install) into `~/VideoMentor`. The original is left untouched as a backup. |
 | `vm export` | Rewrite every video's Markdown notes. |
 | `vm pair [--new]` | Show the pairing link and 12-digit code for a phone; `--new` makes a new code. |
 | `vm devices [--sign-out ID \| --sign-out-all]` | List paired devices, or sign one or all out (also on Status > Paired devices). |

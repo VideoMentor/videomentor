@@ -332,6 +332,21 @@ def cmd_pair(args, settings) -> None:
     )
 
 
+def cmd_import_library(args, settings) -> None:
+    """Copy a library folder (for example from an older install) into this one."""
+    from .importer import import_library
+
+    target = library_home()
+    try:
+        report = import_library(Path(args.folder), target)
+    except ValueError as e:
+        sys.exit(str(e))
+    print(f"Imported into {target}: {report.items} videos, {report.files} files.")
+    print(f"Updated {report.rewritten_paths} stored path(s). The original folder is unchanged.")
+    if report.leftover_mentions:
+        print("Still mentioning the old folder: " + ", ".join(report.leftover_mentions))
+
+
 def cmd_devices(args, settings) -> None:
     """Paired devices (sign-ins), newest use first; sign one or all of them out."""
     with db.session() as conn:
@@ -500,6 +515,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--new", action="store_true", help="make a new pairing code")
     p.set_defaults(fn=cmd_pair)
 
+    p = sub.add_parser(
+        "import-library", help="copy a library folder into this one (keeps the original)"
+    )
+    p.add_argument("folder", help="the library folder to copy, for example ~/YouTubeMentor")
+    p.set_defaults(fn=cmd_import_library, no_settings=True)
+
     p = sub.add_parser("devices", help="list paired devices; --sign-out ID or --sign-out-all")
     p.add_argument("--sign-out", metavar="ID")
     p.add_argument("--sign-out-all", action="store_true")
@@ -517,7 +538,9 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
-    settings = load_settings()
+    # import-library fills an empty library folder; loading settings first would create
+    # config.toml there, so that command runs without them.
+    settings = None if getattr(args, "no_settings", False) else load_settings()
     if args.cmd != "serve":
         logging.basicConfig(level=logging.WARNING)
     args.fn(args, settings)

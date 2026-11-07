@@ -69,6 +69,15 @@ On the Mac itself, `http://127.0.0.1:8791` works without Tailscale.
 ## 7. Turn on playlists
 Open the **Playlists** tab and switch on the playlists you want synced. Watch Later is always on.
 
+## Coming from an older install
+If you already have a library from an earlier version in another folder, copy it in before your first sync:
+```sh
+uv run vm uninstall-service            # if an older login service is running
+uv run vm import-library ~/OldLibraryFolder
+uv run vm install-service
+```
+It copies the database (safely, even if the old app is still running), notes, training, settings and tokens into `~/VideoMentor`, and updates stored paths. The original folder is never changed, so it stays your backup. Devices pair once more with `vm pair`.
+
 ## Where things live
 | What | Where |
 |---|---|
