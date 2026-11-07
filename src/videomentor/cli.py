@@ -8,6 +8,7 @@ import logging
 import os
 import plistlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -341,6 +342,8 @@ def cmd_import_library(args, settings) -> None:
         report = import_library(Path(args.folder), target)
     except ValueError as e:
         sys.exit(str(e))
+    except (OSError, sqlite3.Error) as e:
+        sys.exit(f"The import stopped and left nothing behind: {e}")
     print(f"Imported into {target}: {report.items} videos, {report.files} files.")
     print(f"Updated {report.rewritten_paths} stored path(s). The original folder is unchanged.")
     if report.leftover_mentions:

@@ -9,7 +9,9 @@ copied; `vm install-service` rebuilds it.
 from __future__ import annotations
 
 import shutil
+import socket
 import sqlite3
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,7 +28,11 @@ class ImportReport:
 
 
 def import_library(source: Path, target: Path) -> ImportReport:
-    """Copy the library at `source` into `target`, which must be missing or empty."""
+    """Copy the library at `source` into `target`, which must be missing or empty.
+
+    Built in a temporary folder next to the target and moved into place at the end, so a
+    failure partway through leaves nothing behind and a retry starts clean.
+    """
     source, target = Path(source).expanduser().resolve(), Path(target).expanduser().resolve()
     if not (source / "library.db").exists():
         raise ValueError(f"No library at {source} (library.db is missing)")
@@ -34,38 +40,77 @@ def import_library(source: Path, target: Path) -> ImportReport:
         raise ValueError(f"{target} already has files in it; it must be empty")
     if target == source or source in target.parents:
         raise ValueError("The target can't be the source folder or inside it")
-    target.mkdir(parents=True, exist_ok=True)
-    report = ImportReport()
+    _refuse_if_running(source)
 
+    work = target.parent / f".{target.name}.importing"
+    shutil.rmtree(work, ignore_errors=True)  # left by an interrupted earlier run
+    work.mkdir(parents=True)
+    try:
+        report = _copy(source, work, rewrite_to=target)
+        if target.exists():
+            target.rmdir()  # empty, checked above
+        work.rename(target)
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    return report
+
+
+def _refuse_if_running(source: Path) -> None:
+    """The old app still serving means writes could land after the copy: stop first."""
+    try:
+        port = int(tomllib.loads((source / "config.toml").read_text()).get("port", 0))
+    except (OSError, ValueError, tomllib.TOMLDecodeError):
+        return
+    if not port:
+        return
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        if s.connect_ex(("127.0.0.1", port)) == 0:
+            raise ValueError(
+                f"The app using {source} is still running (port {port}). Stop its login service"
+                " first (for example its `uninstall-service` command), then import."
+            )
+
+
+def _copy(source: Path, work: Path, rewrite_to: Path) -> ImportReport:
+    report = ImportReport()
+    sidecars = [source / "library.db-wal", source / "library.db-shm"]
+    existed = {p for p in sidecars if p.exists()}
     src = sqlite3.connect(f"{source.as_uri()}/library.db?mode=ro", uri=True)
-    dst = sqlite3.connect(target / "library.db")
+    dst = sqlite3.connect(work / "library.db")
     try:
         src.backup(dst)
     finally:
         src.close()
+        # A read-only open of an idle WAL database creates empty -wal/-shm files; the
+        # source must be left exactly as it was, so remove any this run created.
+        for p in sidecars:
+            if p not in existed and p.exists():
+                p.unlink()
     report.files += 1
+    try:
+        for name in FOLDERS:
+            if (source / name).is_dir():
+                shutil.copytree(source / name, work / name, copy_function=shutil.copy2)
+                report.files += sum(1 for p in (work / name).rglob("*") if p.is_file())
+        for name in FILES:
+            if (source / name).is_file():
+                shutil.copy2(source / name, work / name)
+                report.files += 1
+        old, new = str(source), str(rewrite_to)
+        with dst:
+            cur = dst.execute(
+                "UPDATE training_modules SET path = ? || substr(path, ?) WHERE path LIKE ? || '%'",
+                (new, len(old) + 1, old),
+            )
+            report.rewritten_paths = cur.rowcount
+        report.items = dst.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        report.leftover_mentions = _mentions(dst, old)
+    finally:
+        dst.close()
 
-    for name in FOLDERS:
-        if (source / name).is_dir():
-            shutil.copytree(source / name, target / name, copy_function=shutil.copy2)
-            report.files += sum(1 for p in (target / name).rglob("*") if p.is_file())
-    for name in FILES:
-        if (source / name).is_file():
-            shutil.copy2(source / name, target / name)
-            report.files += 1
-
-    old, new = str(source), str(target)
-    with dst:
-        cur = dst.execute(
-            "UPDATE training_modules SET path = ? || substr(path, ?) WHERE path LIKE ? || '%'",
-            (new, len(old) + 1, old),
-        )
-        report.rewritten_paths = cur.rowcount
-    report.items = dst.execute("SELECT COUNT(*) FROM items").fetchone()[0]
-    report.leftover_mentions = _mentions(dst, old)
-    dst.close()
-
-    config = target / "config.toml"
+    config = work / "config.toml"
     if config.exists():
         lines = config.read_text().splitlines(keepends=True)
         if lines and lines[0].startswith("#"):

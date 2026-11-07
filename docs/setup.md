@@ -72,11 +72,12 @@ Open the **Playlists** tab and switch on the playlists you want synced. Watch La
 ## Coming from an older install
 If you already have a library from an earlier version in another folder, copy it in before your first sync:
 ```sh
-uv run vm uninstall-service            # if an older login service is running
+# 1. Stop the older app first, using that version's own command (for example its
+#    `uninstall-service`), so nothing changes in the old folder while it's copied.
 uv run vm import-library ~/OldLibraryFolder
 uv run vm install-service
 ```
-It copies the database (safely, even if the old app is still running), notes, training, settings and tokens into `~/VideoMentor`, and updates stored paths. The original folder is never changed, so it stays your backup. Devices pair once more with `vm pair`.
+It refuses to run while the older app is still serving. It copies the database, notes, training, settings and tokens into `~/VideoMentor` and updates stored paths; if anything fails, it leaves nothing behind. The original folder is never changed, so it stays your backup. Devices pair once more with `vm pair`.
 
 ## Where things live
 | What | Where |

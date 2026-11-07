@@ -127,3 +127,45 @@ def test_imports_an_idle_wal_database(tmp_path):
     report = import_library(source, target)
     assert report.items == 1
     assert (source / "library.db").read_bytes() == before  # the original's data is unchanged
+
+
+def test_refuses_while_the_old_app_is_running(tmp_path):
+    import socket
+
+    source, target = make_source(tmp_path / "OldName"), tmp_path / "VideoMentor"
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+        with open(source / "config.toml", "a") as f:
+            f.write(f"port = {port}\n")
+        with pytest.raises(ValueError, match="still running"):
+            import_library(source, target)
+    assert not target.exists()
+
+
+def test_adds_no_files_to_the_source(tmp_path):
+    source, target = make_source(tmp_path / "OldName"), tmp_path / "VideoMentor"
+    conn = sqlite3.connect(source / "library.db")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.close()  # idle: no -wal or -shm, as after stopping the old app
+    before = {p.relative_to(source) for p in source.rglob("*")}
+    import_library(source, target)
+    assert {p.relative_to(source) for p in source.rglob("*")} == before
+
+
+def test_a_failed_import_leaves_no_half_filled_folder(tmp_path, monkeypatch):
+    from videomentor import importer
+
+    source, target = make_source(tmp_path / "OldName"), tmp_path / "VideoMentor"
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(importer.shutil, "copytree", boom)
+    with pytest.raises(OSError):
+        import_library(source, target)
+    assert not target.exists()
+    assert not any(p.name.endswith(".importing") for p in tmp_path.iterdir())
+    monkeypatch.undo()
+    assert import_library(source, target).items == 1  # a retry just works
