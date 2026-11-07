@@ -114,3 +114,16 @@ def test_the_command_imports_into_a_fresh_library_home(tmp_path, monkeypatch, ca
     assert (home / "library.db").exists() and (home / "config.toml").read_text().startswith(
         "# VideoMentor"
     )
+
+
+def test_imports_an_idle_wal_database(tmp_path):
+    # Like a real library at rest: WAL mode, no open connection, so no -wal or -shm file.
+    source, target = make_source(tmp_path / "OldName"), tmp_path / "VideoMentor"
+    conn = sqlite3.connect(source / "library.db")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.close()
+    assert not (source / "library.db-shm").exists()
+    before = (source / "library.db").read_bytes()
+    report = import_library(source, target)
+    assert report.items == 1
+    assert (source / "library.db").read_bytes() == before  # the original's data is unchanged
