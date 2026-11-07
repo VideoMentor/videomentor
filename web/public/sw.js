@@ -4,13 +4,13 @@
 // - YouTube thumbnails (i.ytimg.com): cache first, trimmed to MAX_THUMBS.
 // - /api and /pair: never touched; they always go to the network.
 // Bump VERSION to drop old shell and asset caches.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = `vm-shell-${VERSION}`;
 const ASSETS = `vm-assets-${VERSION}`;
 const THUMBS = 'vm-thumbs';
 const MAX_THUMBS = 400;
 const NAV_TIMEOUT_MS = 4000;
-const SHELL_URLS = ['/', '/manifest.webmanifest', '/icons/icon-180.png', '/icons/icon-512.png'];
+const SHELL_URLS = ['/', '/manifest.webmanifest', '/favicon.ico', '/icons/vm-180.png', '/icons/vm-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -33,7 +33,8 @@ self.addEventListener('activate', (event) => {
     (async () => {
       const keep = new Set([SHELL, ASSETS, THUMBS]);
       for (const key of await caches.keys()) {
-        if (key.startsWith('vm-') && !keep.has(key)) await caches.delete(key);
+        // Also drop caches an older install left under its old prefix.
+        if ((key.startsWith('vm-') || key.startsWith('ytm-')) && !keep.has(key)) await caches.delete(key);
       }
       await self.clients.claim();
     })(),

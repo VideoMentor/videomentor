@@ -11,19 +11,19 @@
   "background_color": "#f7f7f9",
   "icons": [
     {
-      "src": "/icons/icon-180.png",
+      "src": "/icons/vm-180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/vm-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512-maskable.png",
+      "src": "/icons/vm-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

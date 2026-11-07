@@ -16,7 +16,7 @@ export function PairScreen({ onRetry }: { onRetry(): void }) {
   };
   return (
     <section className="pair" aria-labelledby="pair-title">
-      <img src="/icons/icon-180.png" alt="" width={72} height={72} />
+      <img src="/icons/vm-180.png" alt="" width={72} height={72} />
       <h1 id="pair-title">Pair this device</h1>
       <p>
         On the Mac, run <code>vm pair</code> and open the link it prints on this device. Or type its 12-digit code here.
