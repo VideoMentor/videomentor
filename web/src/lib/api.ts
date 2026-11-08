@@ -26,6 +26,7 @@ import type {
   TagHistory,
 } from './types';
 import type { TouchEvent } from './events';
+import { isCacheable, offlineStore } from './offlineStore';
 import type { BatchResult, QueueTransport } from './queue';
 
 export class ApiError extends Error {
@@ -91,10 +92,12 @@ export async function request<T>(path: string, init: { method?: string; body?: u
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(init.body);
   }
+  const method = init.method ?? (body ? 'POST' : 'GET');
+  const saveable = method === 'GET' && isCacheable(path);
   let res: Response;
   try {
     res = await fetchImpl(path, {
-      method: init.method ?? (body ? 'POST' : 'GET'),
+      method,
       headers,
       body,
       credentials: 'same-origin',
@@ -103,9 +106,15 @@ export async function request<T>(path: string, init: { method?: string; body?: u
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    // The Mac can't be reached: use the copy saved the last time this screen loaded.
+    if (saveable) {
+      const saved = await offlineStore().get(path);
+      if (saved !== undefined) return saved as T;
+    }
     throw new NetworkError();
   }
   if (res.status === 401) {
+    await offlineStore().clear(); // signed out: nobody else on this device reads the library
     unauthorizedListeners.forEach((fn) => fn());
     throw new AuthError();
   }
@@ -122,7 +131,9 @@ export async function request<T>(path: string, init: { method?: string; body?: u
   authorizedListeners.forEach((fn) => fn());
   if (res.status === 204) return undefined as T;
   const text = await res.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  const data = (text ? JSON.parse(text) : undefined) as T;
+  if (saveable && data !== undefined) void offlineStore().set(path, data);
+  return data;
 }
 
 // ---- URL builders (pure, tested) -----------------------------------------
