@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { ApiError, AuthError, api, groupDecisionId, isNetworkError } from '../lib/api';
 import { UNDO_LIMIT, conflictMessage, pushCapped, removeEntry, trimHistory, undoneMessage } from '../lib/undoHistory';
-import { deckReducer, excludeIds, reviveDecks, type RoundAction } from '../lib/deck';
+import { deckReducer, excludeIds, reviveDecks, type DeckState, type RoundAction } from '../lib/deck';
+import { offlineStore } from '../lib/offlineStore';
+import { takeFromPack } from '../lib/packDeck';
+import type { PackDecks } from '../lib/offlinePack';
+
+/** Take a round from the saved pack and save back what's left, so no card is dealt twice. */
+async function dealFromPack(key: DeckKey, d: DeckState, source: string): Promise<Card[]> {
+  const store = offlineStore();
+  const saved = (await store.get('pack:decks')) as PackDecks | undefined;
+  if (!saved || saved.source !== source) return [];
+  const skip = new Set(excludeIds(d, queue.pendingItemIds()));
+  const { round, rest } = takeFromPack(saved.decks[key] ?? [], DECK_SIZE, skip);
+  if (round.length) await store.set('pack:decks', { ...saved, decks: { ...saved.decks, [key]: rest } });
+  return round;
+}
 import { normalizeCard } from '../lib/format';
 import type { Card, DeckKey, Group, GroupAction } from '../lib/types';
 import { queue } from './queue';
@@ -109,6 +123,15 @@ export function useTriage(online: boolean) {
       );
       dispatch({ type: 'loaded', deck: key, cards: cards.map(normalizeCard) });
     } catch (err) {
+      // The Mac can't be reached: deal the next round from the offline pack, if it was
+      // saved for this deck source.
+      if (isNetworkError(err)) {
+        const round = await dealFromPack(key, decksRef.current[key], sourceRef.current);
+        if (round.length) {
+          dispatch({ type: 'loaded', deck: key, cards: round.map(normalizeCard) });
+          return;
+        }
+      }
       if (!(err instanceof AuthError)) {
         setError((e) => ({ ...e, [key]: isNetworkError(err) ? 'offline' : (err as Error).message }));
       }

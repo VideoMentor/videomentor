@@ -194,10 +194,10 @@ function EmptyDeck({ t, online }: { t: Triage; online: boolean }) {
             <b>{prioritize}</b> analyzing first
           </li>
         </ul>
-        <button className="primary" onClick={t.nextRound} disabled={!online && !hasNext}>
+        <button className="primary" onClick={t.nextRound}>
           Next 10
         </button>
-        {!online && !hasNext && <p className="note">Next deck loads when you have signal.</p>}
+        {!online && !hasNext && <p className="note">Offline: the next round comes from your offline pack.</p>}
       </div>
     );
   }
@@ -207,8 +207,8 @@ function EmptyDeck({ t, online }: { t: Triage; online: boolean }) {
       <div className="empty">
         <h2>{offline ? 'You’re offline' : 'Couldn’t load the deck'}</h2>
         <p className="note">{offline ? 'The deck loads when you have signal.' : error}</p>
-        <button className="primary" onClick={() => void t.refresh()} disabled={!online}>
-          Try again
+        <button className="primary" onClick={() => void t.refresh()}>
+          {offline ? 'Use offline pack' : 'Try again'}
         </button>
       </div>
     );
