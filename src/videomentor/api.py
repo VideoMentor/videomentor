@@ -14,6 +14,7 @@ from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -146,6 +147,8 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             worker.shutdown()
 
     app = FastAPI(title="VideoMentor", lifespan=lifespan)
+    # The offline pack is several MB of JSON; compressed it's about a quarter of that.
+    app.add_middleware(GZipMiddleware, minimum_size=2048)
 
     @app.middleware("http")
     async def no_referrer(request: Request, call_next):

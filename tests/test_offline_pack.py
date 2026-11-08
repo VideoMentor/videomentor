@@ -48,3 +48,11 @@ def test_pack_card_count_is_clamped(conn):
 def test_pack_needs_sign_in(conn):
     with TestClient(create_app(Settings(pair_code="T"), run_worker=False)) as c:
         assert c.get("/api/offline-pack").status_code == 401
+
+
+def test_pack_is_compressed(conn):
+    for i in range(30):
+        add(conn, f"z{i:02d}")
+    with client() as c:
+        r = c.get("/api/offline-pack", headers={"Accept-Encoding": "gzip"})
+    assert r.headers.get("content-encoding") == "gzip"

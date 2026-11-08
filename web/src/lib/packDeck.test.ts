@@ -24,3 +24,16 @@ describe('takeFromPack', () => {
     expect(second.rest).toHaveLength(5);
   });
 });
+
+describe('removeFromPack', () => {
+  it('takes a decided card out of both saved decks', async () => {
+    const { removeFromPack } = await import('./packDeck');
+    const { MemoryOfflineStore } = await import('./offlineStore');
+    const store = new MemoryOfflineStore();
+    await store.set('pack:decks', { source: 'all', decks: { main: cards(3), music: [{ id: 'yt:1' } as Card] } });
+    await removeFromPack(store, 'yt:1');
+    const saved = (await store.get('pack:decks')) as { decks: { main: Card[]; music: Card[] } };
+    expect(saved.decks.main.map((c) => c.id)).toEqual(['yt:0', 'yt:2']);
+    expect(saved.decks.music).toEqual([]);
+  });
+});

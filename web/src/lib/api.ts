@@ -26,7 +26,7 @@ import type {
   TagHistory,
 } from './types';
 import type { TouchEvent } from './events';
-import { isCacheable, offlineStore } from './offlineStore';
+import { isCacheable, offlineStore, withTimeout } from './offlineStore';
 import type { OfflinePack } from './offlinePack';
 import type { BatchResult, QueueTransport } from './queue';
 
@@ -86,6 +86,18 @@ export function setFetch(fn: FetchLike): void {
   fetchImpl = fn;
 }
 
+// A gateway error means Tailscale (or a proxy) answered but the app behind it is down.
+const GATEWAY = new Set([502, 503, 504]);
+let offlineTimeoutMs = 5000;
+
+/** How long a screen waits for the Mac before showing its saved copy (tests shorten it). */
+export function setOfflineTimeout(ms: number): void {
+  offlineTimeoutMs = ms;
+}
+
+const TIMED_OUT = Symbol('timed out');
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function request<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   let body: string | undefined;
@@ -95,9 +107,11 @@ export async function request<T>(path: string, init: { method?: string; body?: u
   }
   const method = init.method ?? (body ? 'POST' : 'GET');
   const saveable = method === 'GET' && isCacheable(path);
+  // With a saved copy on hand, don't make the screen wait out a long network timeout.
+  const saved = saveable ? await withTimeout(offlineStore().get(path), 1000, undefined) : undefined;
   let res: Response;
   try {
-    res = await fetchImpl(path, {
+    const fetching = fetchImpl(path, {
       method,
       headers,
       body,
@@ -105,13 +119,19 @@ export async function request<T>(path: string, init: { method?: string; body?: u
       cache: 'no-store',
       signal: init.signal,
     });
+    res =
+      saved === undefined
+        ? await fetching
+        : ((await Promise.race([fetching, delay(offlineTimeoutMs).then(() => TIMED_OUT)])) as Response);
+    if ((res as unknown) === TIMED_OUT) return saved as T;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
     // The Mac can't be reached: use the copy saved the last time this screen loaded.
-    if (saveable) {
-      const saved = await offlineStore().get(path);
-      if (saved !== undefined) return saved as T;
-    }
+    if (saved !== undefined) return saved as T;
+    throw new NetworkError();
+  }
+  if (GATEWAY.has(res.status)) {
+    if (saved !== undefined) return saved as T;
     throw new NetworkError();
   }
   if (res.status === 401) {

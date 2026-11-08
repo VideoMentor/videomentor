@@ -5,7 +5,7 @@ import { ApiError, AuthError, api, groupDecisionId, isNetworkError } from '../li
 import { UNDO_LIMIT, conflictMessage, pushCapped, removeEntry, trimHistory, undoneMessage } from '../lib/undoHistory';
 import { deckReducer, excludeIds, reviveDecks, type DeckState, type RoundAction } from '../lib/deck';
 import { offlineStore } from '../lib/offlineStore';
-import { takeFromPack } from '../lib/packDeck';
+import { removeFromPack, takeFromPack } from '../lib/packDeck';
 import type { PackDecks } from '../lib/offlinePack';
 
 /** Take a round from the saved pack and save back what's left, so no card is dealt twice. */
@@ -181,6 +181,7 @@ export function useTriage(online: boolean) {
   const decide = useCallback(
     (card: Card, action: RoundAction) => {
       const d = queue.enqueue(card.id, action);
+      void removeFromPack(offlineStore(), card.id); // never dealt again offline
       dispatch({ type: 'removed', deck, ids: [card.id], action });
       pushHistory({ kind: 'decision', deck, client_id: d.client_id, action, card });
       showToast(LABELS[action]);

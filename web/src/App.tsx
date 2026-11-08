@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthError, api, isNetworkError, onAuthorized, onUnauthorized } from './lib/api';
 import type { StatusResponse } from './lib/types';
 import { DeckScreen } from './screens/DeckScreen';
@@ -88,15 +88,19 @@ export function App() {
     }
   }, [online, flush, loadStatus]);
 
-  // Keep the offline pack fresh: on start and when the app comes back, if it's over 30 minutes old.
+  // Keep the offline pack fresh: shortly after start and whenever the app comes back,
+  // if it's over 30 minutes old. A ref keeps the current deck source and cards in hand.
+  const triageRef = useRef(t);
+  triageRef.current = t;
   const refreshPackIfStale = useCallback(async () => {
     if (!navigator.onLine) return;
     const store = offlineStore();
     if (!isStale(await readPackSummary(store))) return;
-    await refreshPack(store, { exclude: t.packExclude(), source: t.source.key }).catch(() => {});
-  }, [t]);
+    const tr = triageRef.current;
+    await refreshPack(store, { exclude: tr.packExclude(), source: tr.source.key }).catch(() => {});
+  }, []);
   useEffect(() => {
-    const timer = setTimeout(() => void refreshPackIfStale(), 4000); // after the first screen loads
+    const timer = setTimeout(() => void refreshPackIfStale(), 4000); // once, after the first screen loads
     return () => clearTimeout(timer);
   }, [refreshPackIfStale]);
 
@@ -104,7 +108,7 @@ export function App() {
     void refreshPackIfStale();
     flush();
     if (navigator.onLine) void loadStatus();
-  }, [flush, loadStatus]);
+  }, [flush, loadStatus, refreshPackIfStale]);
   useOnForeground(onForeground);
 
   const onSeen = useCallback((id: string) => setSeenIds((s) => new Set(s).add(id)), []);

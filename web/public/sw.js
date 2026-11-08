@@ -4,7 +4,7 @@
 // - YouTube thumbnails (i.ytimg.com): cache first, trimmed to MAX_THUMBS.
 // - /api and /pair: never touched; they always go to the network.
 // Bump VERSION to drop old shell and asset caches.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `vm-shell-${VERSION}`;
 const ASSETS = `vm-assets-${VERSION}`;
 const THUMBS = 'vm-thumbs';
@@ -77,7 +77,12 @@ async function networkFirstShell(req) {
       cache.put('/', res.clone());
       return res;
     }
-    // A redirect or error page from the server: pass it through.
+    // A gateway error means the Mac's app is down behind Tailscale: open the saved app.
+    if ([502, 503, 504].includes(res.status)) {
+      const cached = (await cache.match('/')) || (await cache.match(req));
+      if (cached) return cached;
+    }
+    // A redirect or other error page from the server: pass it through.
     return res;
   } catch (err) {
     const cached = (await cache.match('/')) || (await cache.match(req));
