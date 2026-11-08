@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthError, api, isNetworkError } from '../lib/api';
 import { groupByVideo } from '../lib/actionsView';
+import { applyToSavedActions, queueActionUpdate, type ActionPatch } from '../lib/actionQueue';
 import { formatDuration, momentUrl, normalizeCard, relativeTime, thumbnailOf } from '../lib/format';
 import type { ActionCounts, ActionItem, ActionStatus } from '../lib/types';
 import { useInfo } from '../state/info';
@@ -11,6 +12,7 @@ export function ActionsScreen({ online }: { online: boolean }) {
   const [rows, setRows] = useState<ActionItem[] | null>(null);
   const [counts, setCounts] = useState<ActionCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queuedNote, setQueuedNote] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
   const { open } = useInfo();
@@ -54,9 +56,17 @@ export function ActionsScreen({ online }: { online: boolean }) {
     );
     try {
       await api.updateAction(a.id, { status: next });
-    } catch {
-      void load();
+    } catch (err) {
+      if (isNetworkError(err)) offlineChange(a.id, { status: next });
+      else void load();
     }
+  };
+
+  // Offline: keep the change on screen, save it for later, and sync it with the swipes.
+  const offlineChange = (id: number, patch: ActionPatch) => {
+    queueActionUpdate(id, patch);
+    void applyToSavedActions(id, patch);
+    setQueuedNote(true);
   };
 
   const saveNote = async (a: ActionItem) => {
@@ -64,8 +74,9 @@ export function ActionsScreen({ online }: { online: boolean }) {
     setRows((rs) => rs?.map((r) => (r.id === a.id ? { ...r, note: draft.trim() || null } : r)) ?? rs);
     try {
       await api.updateAction(a.id, { note: draft });
-    } catch {
-      void load();
+    } catch (err) {
+      if (isNetworkError(err)) offlineChange(a.id, { note: draft });
+      else void load();
     }
   };
 
@@ -75,6 +86,7 @@ export function ActionsScreen({ online }: { online: boolean }) {
         <h1>Actions</h1>
         {counts && counts.done_this_week > 0 && <span className="muted small">{counts.done_this_week} done this week</span>}
       </header>
+      {queuedNote && <p className="note small actions-queued">Saved on this device; it syncs when your Mac is reachable.</p>}
       <div className="lib-controls">
         <div className="segmented" role="tablist" aria-label="Which actions">
           {(

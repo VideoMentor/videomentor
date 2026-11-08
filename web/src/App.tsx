@@ -13,6 +13,7 @@ import { initialTab, rememberTab } from './state/startScreen';
 import { reportDevice } from './lib/deviceHint';
 import { isStale, readPackSummary, refreshPack } from './lib/offlinePack';
 import { offlineStore } from './lib/offlineStore';
+import { flushActionQueue } from './lib/actionQueue';
 import { onNavigate } from './state/nav';
 import { PairScreen } from './screens/PairScreen';
 import { TabBar, type Tab } from './components/TabBar';
@@ -62,6 +63,7 @@ export function App() {
     if (!navigator.onLine) return;
     if (queue.length) void queue.flush();
     if (touches.length) void touches.flush();
+    void flushActionQueue((id, patch) => api.updateAction(id, patch));
   }, []);
 
   // Start-up, then keep the queue moving and the counts fresh.

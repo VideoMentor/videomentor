@@ -3040,3 +3040,7 @@ button.card-block.tidy-link > span:last-child {
   gap: 12px;
   padding: 6px 0;
 }
+
+.actions-queued {
+  margin: 0 16px 8px;
+}
