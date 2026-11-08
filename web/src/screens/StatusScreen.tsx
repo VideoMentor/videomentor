@@ -1,4 +1,7 @@
 import { LOGIN_LOST, loginLost, syncErrors } from '../lib/syncHealth';
+import { PACK_SIZES, packSize, readPackSummary, refreshPack, setPackSize, type PackSummary } from '../lib/offlinePack';
+import { offlineStore } from '../lib/offlineStore';
+import { useDeckSource } from '../state/source';
 import { START_CHOICES, readStartChoice, saveStartChoice, type StartChoice } from '../state/startScreen';
 import { useEffect, useState } from 'react';
 import { TidyTagsScreen } from './TidyTagsScreen';
@@ -120,6 +123,7 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
         </div>
 
         <ProgressCard online={online} />
+        <OfflinePackCard online={online} />
         <StartScreenCard />
         <DevicesCard online={online} />
         <DelightSettingsCard />
@@ -289,6 +293,63 @@ function DevicesCard({ online }: { online: boolean }) {
       )}
       {note && <p className="note small">{note}</p>}
       <p className="muted small">A device unused for {days} days is signed out automatically. Pair again with the pairing link from the Mac.</p>
+    </div>
+  );
+}
+
+/** What the phone keeps for when the Mac can't be reached, and a way to refresh it now. */
+function OfflinePackCard({ online }: { online: boolean }) {
+  const source = useDeckSource();
+  const [summary, setSummary] = useState<PackSummary | null>(null);
+  const [size, setSize] = useState(packSize);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    void readPackSummary(offlineStore()).then(setSummary);
+  }, []);
+  const refresh = async (cards = size) => {
+    setBusy(true);
+    setNote(null);
+    setPackSize(cards);
+    try {
+      // Cards in hand are skipped when the pack is used, so no exclusions are needed here.
+      setSummary(await refreshPack(offlineStore(), { exclude: [], source: source.key }));
+    } catch (err) {
+      setNote(isNetworkError(err) ? 'Refreshing needs a connection to your Mac.' : (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card-block start-card">
+      <h4>Offline pack</h4>
+      <p className="note small">
+        {summary
+          ? `${summary.cards} cards · ${summary.items} notes · ${summary.modules} ${summary.modules === 1 ? 'module' : 'modules'} · ${summary.actions} actions · updated ${formatDateTime(summary.at)}`
+          : 'Nothing saved yet. It fills in by itself while your Mac is reachable.'}
+      </p>
+      <label className="lib-select">
+        <span>Cards to keep per deck</span>
+        <select
+          value={size}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            setSize(n);
+            void refresh(n);
+          }}
+        >
+          {PACK_SIZES.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="secondary" onClick={() => void refresh()} disabled={!online || busy}>
+        {busy ? 'Refreshing…' : 'Refresh now'}
+      </button>
+      {note && <p className="note small">{note}</p>}
+      <p className="muted small">With your Mac off, you can still swipe these cards, read notes, check off actions and read training. Changes sync when it's back.</p>
     </div>
   );
 }

@@ -27,6 +27,7 @@ import type {
 } from './types';
 import type { TouchEvent } from './events';
 import { isCacheable, offlineStore } from './offlineStore';
+import type { OfflinePack } from './offlinePack';
 import type { BatchResult, QueueTransport } from './queue';
 
 export class ApiError extends Error {
@@ -250,6 +251,13 @@ export const api = {
     request<Record<string, unknown>>(`/api/groups/${encodeURIComponent(String(groupId))}/decide`, {
       body: { client_id: clientId, action },
     }),
+
+  offlinePack: (cards: number, exclude: string[], source: string) => {
+    const params = new URLSearchParams({ cards: String(cards), source });
+    const ids = [...new Set(exclude)].filter(Boolean);
+    if (ids.length) params.set('exclude', ids.join(','));
+    return request<OfflinePack>(`/api/offline-pack?${params.toString()}`);
+  },
 
   ready: () => request<{ items: Card[] }>('/api/ready').then((r) => r?.items ?? []),
 

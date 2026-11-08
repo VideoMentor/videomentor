@@ -291,6 +291,17 @@ export function useTriage(online: boolean) {
 
   const refresh = useCallback(() => fetchDeck(deck), [deck, fetchDeck]);
 
+  /** Cards in hand (both decks) and swipes waiting to send: the offline pack leaves these out. */
+  const packExclude = useCallback(
+    () => [
+      ...new Set([
+        ...excludeIds(decksRef.current.main, queue.pendingItemIds()),
+        ...excludeIds(decksRef.current.music, []),
+      ]),
+    ],
+    [],
+  );
+
   return {
     deck,
     setDeck,
@@ -313,6 +324,7 @@ export function useTriage(online: boolean) {
     undo,
     nextRound,
     refresh,
+    packExclude,
   };
 }
 

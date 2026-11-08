@@ -11,6 +11,8 @@ import { TrainScreen } from './screens/TrainScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { initialTab, rememberTab } from './state/startScreen';
 import { reportDevice } from './lib/deviceHint';
+import { isStale, readPackSummary, refreshPack } from './lib/offlinePack';
+import { offlineStore } from './lib/offlineStore';
 import { onNavigate } from './state/nav';
 import { PairScreen } from './screens/PairScreen';
 import { TabBar, type Tab } from './components/TabBar';
@@ -84,7 +86,20 @@ export function App() {
     }
   }, [online, flush, loadStatus]);
 
+  // Keep the offline pack fresh: on start and when the app comes back, if it's over 30 minutes old.
+  const refreshPackIfStale = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const store = offlineStore();
+    if (!isStale(await readPackSummary(store))) return;
+    await refreshPack(store, { exclude: t.packExclude(), source: t.source.key }).catch(() => {});
+  }, [t]);
+  useEffect(() => {
+    const timer = setTimeout(() => void refreshPackIfStale(), 4000); // after the first screen loads
+    return () => clearTimeout(timer);
+  }, [refreshPackIfStale]);
+
   const onForeground = useCallback(() => {
+    void refreshPackIfStale();
     flush();
     if (navigator.onLine) void loadStatus();
   }, [flush, loadStatus]);
