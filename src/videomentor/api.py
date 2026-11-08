@@ -493,6 +493,50 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
     def training_list(c: sqlite3.Connection = Depends(conn)):
         return {"modules": training.list_modules(c)}
 
+    @app.get("/api/offline-pack", dependencies=[api])
+    def offline_pack(
+        cards: int = 100,
+        exclude: str = "",
+        source: str = "all",
+        c: sqlite3.Connection = Depends(conn),
+    ):
+        """Everything the phone keeps for when it can't reach this Mac: the kept and archived
+        library, ready list, actions, training modules, the next cards of each deck, and
+        the details (notes) behind every one of those videos."""
+        if source not in ("all", "wl", "playlists") and not source.startswith(("pl:", "ch:")):
+            raise HTTPException(422, "unknown source")
+        n = max(10, min(cards, 200))
+        ids = [x for x in exclude.split(",") if x]
+        decks = {d: library.deck(c, d, n, ids, source) for d in ("main", "music")}
+        kept = library.library_items(c, "kept", None)
+        archived = library.library_items(c, "archived", None)
+        actions.collect(c)
+        modules = training.list_modules(c)
+        details = {}
+        for m in modules:
+            full = training.get(c, m["id"])
+            if full and full.get("status") == "ready":
+                details[str(m["id"])] = full | {"video": render.status(m["id"])}
+        items = {}
+        for card in [*kept, *decks["main"], *decks["music"]]:
+            if card["id"] not in items:
+                try:
+                    items[card["id"]] = library.item_detail(c, card["id"])
+                except library.NotFound:
+                    pass
+        return {
+            "generated_at": db.now(),
+            "library": {"kept": kept, "archived": archived},
+            "ready": library.ready(c),
+            "actions": {
+                **{s: actions.list_actions(c, s) for s in ("all", "open", "done", "skipped")},
+                "counts": actions.counts(c),
+            },
+            "training": {"modules": modules, "details": details},
+            "items": items,
+            "decks": decks,
+        }
+
     @app.get("/api/training/{module_id}", dependencies=[api])
     def training_get(module_id: int, c: sqlite3.Connection = Depends(conn)):
         m = training.get(c, module_id)
