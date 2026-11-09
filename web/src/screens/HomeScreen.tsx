@@ -1,6 +1,7 @@
 // Home: the launch screen. The logo, a greeting and big shortcuts to what's waiting.
 import { useEffect, useState } from 'react';
 import { Logo } from '../components/Logo';
+import { NextUpCard } from '../components/NextUpCard';
 import { LAST_LESSON_KEY } from '../components/LessonPlayer';
 import type { Tab } from '../components/TabBar';
 import { api } from '../lib/api';
@@ -89,6 +90,19 @@ export function HomeScreen({ status, readyCount, online }: { status: StatusRespo
             <span className="tile-kicker">Actions</span>
             <b>{openActions === null ? '…' : plural(openActions, 'step')}</b>
             <span>to try this week</span>
+          </button>
+        </div>
+
+        <NextUpCard online={online} />
+
+        <div className="home-links">
+          <button className="home-link" onClick={() => go('tags')}>
+            <b>Tags</b>
+            <span>Every tag and its videos</span>
+          </button>
+          <button className="home-link" onClick={() => go('insights')}>
+            <b>Insights</b>
+            <span>Skills, keep rates, token use</span>
           </button>
         </div>
 

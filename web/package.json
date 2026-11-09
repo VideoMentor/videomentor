@@ -1,7 +1,7 @@
 {
   "name": "videomentor-web",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.14.0",
   "type": "module",
   "description": "VideoMentor phone web app: YouTube swipe triage (PWA).",
   "scripts": {

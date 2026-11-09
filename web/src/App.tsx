@@ -9,14 +9,16 @@ import { PlaylistsScreen } from './screens/PlaylistsScreen';
 import { ActionsScreen } from './screens/ActionsScreen';
 import { TrainScreen } from './screens/TrainScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { TagsScreen } from './screens/TagsScreen';
+import { InsightsScreen } from './screens/InsightsScreen';
 import { initialTab, rememberTab } from './state/startScreen';
 import { reportDevice } from './lib/deviceHint';
 import { isStale, readPackSummary, refreshPack } from './lib/offlinePack';
 import { offlineStore } from './lib/offlineStore';
 import { flushActionQueue } from './lib/actionQueue';
-import { onNavigate } from './state/nav';
+import { onNavigate, onOpenTag, type TagTarget } from './state/nav';
 import { PairScreen } from './screens/PairScreen';
-import { TabBar, type Tab } from './components/TabBar';
+import { EXTRA_TABS, TabBar, type Tab } from './components/TabBar';
 import { Toast } from './components/Toast';
 import { InfoSheet } from './components/InfoSheet';
 import { MilestoneOverlay } from './kit/delight/MilestoneOverlay';
@@ -43,7 +45,32 @@ export function App() {
 
   useEffect(() => onUnauthorized(() => setNeedsPair(true)), []);
   useEffect(() => onAuthorized(() => setNeedsPair(false)), []);
-  useEffect(() => onNavigate(setTab), []);
+  // Tags and Insights aren't in the tab bar: their Back button returns to the tab they came from.
+  const [tagPage, setTagPage] = useState<TagTarget | null>(null);
+  const [backTab, setBackTab] = useState<Tab>('home');
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const go = useCallback((next: Tab) => {
+    const cur = tabRef.current;
+    if (EXTRA_TABS.includes(next) && !EXTRA_TABS.includes(cur)) setBackTab(cur);
+    setTab(next);
+  }, []);
+  useEffect(
+    () =>
+      onNavigate((next) => {
+        if (next === 'tags') setTagPage(null);
+        go(next);
+      }),
+    [go],
+  );
+  useEffect(
+    () =>
+      onOpenTag((target) => {
+        setTagPage(target);
+        go('tags');
+      }),
+    [go],
+  );
   useEffect(() => rememberTab(tab), [tab]);
 
   const loadStatus = useCallback(async () => {
@@ -138,6 +165,8 @@ export function App() {
         {tab === 'actions' && <ActionsScreen online={online} />}
         {tab === 'train' && <TrainScreen online={online} />}
         {tab === 'playlists' && <PlaylistsScreen online={online} />}
+        {tab === 'tags' && <TagsScreen online={online} page={tagPage} onPage={setTagPage} backTab={backTab} />}
+        {tab === 'insights' && <InsightsScreen online={online} backTab={backTab} />}
         {tab === 'status' && (
           <StatusScreen
             status={status}

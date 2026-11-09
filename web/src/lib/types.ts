@@ -325,3 +325,98 @@ export interface PulledChannel {
   inbox: number;
   preparing: number;
 }
+
+// ---- tags, insights and next up (GET /api/tags, /api/insights, /api/next-up) ----
+
+/** One tag with its counts. `avg_signal` is over all its videos, `minutes` over kept ones. */
+export interface TagRow {
+  tag: string;
+  total: number;
+  kept: number;
+  inbox: number;
+  archived: number;
+  analyzed: number;
+  avg_signal: number | null;
+  minutes: number | null;
+}
+
+export type TagItemStatus = 'kept' | 'inbox' | 'archived' | 'all';
+
+/** A video on a tag page. `words` is null without a transcript; `notes` counts key points,
+ *  frameworks and takeaways; `duration_s` is null when unknown. */
+export interface TagItem {
+  id: string;
+  title: string;
+  channel: string | null;
+  status: ItemStatus;
+  signal: number | null;
+  duration_s: number | null;
+  words: number | null;
+  notes: number;
+  actions_open: number;
+  actions_done: number;
+  added_at: string | null;
+  analyzed_at: string | null;
+}
+
+export interface TagItemsResponse {
+  tag: string;
+  summary: { count: number; minutes: number | null; analyzed: number };
+  items: TagItem[];
+}
+
+export interface SkillReport {
+  skill: string;
+  kept: number;
+  analyzed: number;
+  avg_signal: number | null;
+  minutes: number | null;
+  actions_open: number;
+  actions_done: number;
+}
+
+export interface KeepRate {
+  signal: number;
+  kept: number;
+  archived: number;
+  rate: number | null;
+}
+
+export interface UsageTotals {
+  calls?: number;
+  failed?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_creation_tokens?: number;
+  cost_usd?: number;
+}
+
+export interface UsageByStep extends UsageTotals {
+  step: string;
+}
+
+export interface Insights {
+  skills: SkillReport[];
+  funnel: {
+    inbox: number;
+    kept: number;
+    archived: number;
+    analyzed: number;
+    analysis_failed: number;
+    decisions_7d: number;
+    undo_rate: number | null;
+  };
+  signal_keep: KeepRate[];
+  signal_keep_clean?: KeepRate[];
+  sources: { source: string; label?: string | null; kept: number; archived: number; rate: number | null }[];
+  latency: { queue_to_notes_h: number | null; save_to_notes_h: number | null };
+  usage: { since: string | null; total: UsageTotals; last_7d: UsageTotals; by_step: UsageByStep[] };
+  inbox_by_tag: { tag: string; inbox: number; avg_signal: number | null }[];
+}
+
+export type NextUpMode = 'watch' | 'apply';
+
+export type NextUpResponse =
+  | { mode: 'watch'; item: Card | null }
+  | { mode: 'apply'; action: (Omit<ActionItem, 'item'> & { item_title: string; item_id: string; item?: Card | null }) | null };

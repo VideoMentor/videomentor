@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushActionQueue, pendingActionUpdates, queueActionUpdate } from './actionQueue';
 import { storage } from '../state/storage';
 
@@ -52,6 +52,50 @@ describe('action queue under a slow connection', () => {
     await flushActionQueue(async () => {
       throw new ApiError(404, 'no such action');
     });
+    expect(pendingActionUpdates()).toEqual([]);
+  });
+});
+
+describe('sending one action change', () => {
+  beforeEach(async () => {
+    storage.setItem('vm.actionQueue.v1', '');
+    const { MemoryOfflineStore, setOfflineStore } = await import('./offlineStore');
+    setOfflineStore(new MemoryOfflineStore());
+  });
+
+  it('sends it straight away when the Mac answers', async () => {
+    const { sendActionUpdate } = await import('./actionQueue');
+    const sent: number[] = [];
+    expect(await sendActionUpdate(3, { status: 'done' }, async (id) => void sent.push(id))).toBe('sent');
+    expect(sent).toEqual([3]);
+    expect(pendingActionUpdates()).toEqual([]);
+  });
+
+  it('queues it and updates the saved lists when offline', async () => {
+    const { sendActionUpdate } = await import('./actionQueue');
+    const { NetworkError } = await import('./api');
+    const { offlineStore } = await import('./offlineStore');
+    await offlineStore().set('/api/actions?status=open', { actions: [{ id: 4, status: 'open', note: null }], counts: {} });
+    const r = await sendActionUpdate(4, { status: 'skipped' }, async () => {
+      throw new NetworkError();
+    });
+    expect(r).toBe('queued');
+    expect(pendingActionUpdates().map((p) => p.id)).toEqual([4]);
+    // The saved lists update in the background, so the screen never waits on IndexedDB.
+    await vi.waitFor(async () => {
+      const saved = (await offlineStore().get('/api/actions?status=open')) as { actions: { status: string }[] };
+      expect(saved.actions[0].status).toBe('skipped');
+    });
+  });
+
+  it('passes other errors on', async () => {
+    const { sendActionUpdate } = await import('./actionQueue');
+    const { ApiError } = await import('./api');
+    await expect(
+      sendActionUpdate(5, { status: 'done' }, async () => {
+        throw new ApiError(404, 'gone');
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
     expect(pendingActionUpdates()).toEqual([]);
   });
 });

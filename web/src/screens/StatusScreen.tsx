@@ -3,6 +3,8 @@ import { PACK_SIZES, packSize, readPackSummary, refreshPack, setPackSize, type P
 import { offlineStore } from '../lib/offlineStore';
 import { useDeckSource } from '../state/source';
 import { START_CHOICES, readStartChoice, saveStartChoice, type StartChoice } from '../state/startScreen';
+import { NEXT_UP_CHOICES, readNextUpMode, saveNextUpMode } from '../state/nextUp';
+import type { NextUpMode } from '../lib/types';
 import { useEffect, useState } from 'react';
 import { TidyTagsScreen } from './TidyTagsScreen';
 import { ProgressCard } from '../components/ProgressCard';
@@ -212,9 +214,10 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
 /** Which screen the app opens on. */
 function StartScreenCard() {
   const [start, setStart] = useState<StartChoice>(readStartChoice);
+  const [nextUp, setNextUp] = useState<NextUpMode>(readNextUpMode);
   return (
     <div className="card-block start-card">
-      <h4>Start screen</h4>
+      <h4>Start screen and Home</h4>
       <label className="lib-select">
         <span>Open the app on</span>
         <select
@@ -232,6 +235,24 @@ function StartScreenCard() {
           ))}
         </select>
       </label>
+      <label className="lib-select">
+        <span>Next up shows</span>
+        <select
+          value={nextUp}
+          onChange={(e) => {
+            const v = e.target.value as NextUpMode;
+            setNextUp(v);
+            saveNextUpMode(v);
+          }}
+        >
+          {NEXT_UP_CHOICES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="muted small">Watch next suggests the best video in the deck. Apply next suggests a step to try, with Done and Skip.</p>
       <p className="muted small">The app turns with your phone. To keep it upright, use Rotation Lock in Control Center.</p>
     </div>
   );

@@ -216,7 +216,12 @@ def analyze_item(
         else:
             parts.append("Transcript: none available.")
         result = llm.structured(
-            "\n\n".join(parts), system=system(skills, signal_rules), schema=SCHEMA, model=model
+            "\n\n".join(parts),
+            system=system(skills, signal_rules),
+            schema=SCHEMA,
+            model=model,
+            step="analyze",
+            item_id=item_id,
         )
         anchors = [t for t, _ in lines or []] + [c["t"] for c in item.get("chapters") or []]
         result = _clean(result, skills, anchors)

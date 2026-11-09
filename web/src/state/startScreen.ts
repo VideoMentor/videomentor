@@ -6,7 +6,7 @@ export type StartChoice = Tab | 'last';
 
 const START_KEY = 'vm.startScreen.v1';
 const LAST_KEY = 'vm.lastTab.v1';
-const TABS: Tab[] = ['home', 'deck', 'ready', 'library', 'actions', 'train', 'playlists', 'status'];
+const TABS: Tab[] = ['home', 'deck', 'ready', 'library', 'actions', 'train', 'playlists', 'status', 'tags', 'insights'];
 
 export const START_CHOICES: { value: StartChoice; label: string }[] = [
   { value: 'home', label: 'Home (logo and shortcuts)' },

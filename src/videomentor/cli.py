@@ -28,6 +28,7 @@ from . import (
     tagging,
     training,
     transcripts,
+    usage,
     youtube_api,
 )
 from .config import library_home, load_settings, new_pair_code, save_settings
@@ -300,6 +301,11 @@ def cmd_status(args, settings) -> None:
         )
 
 
+def cmd_stats(args, settings) -> None:
+    with db.session() as conn:
+        print(usage.report(conn))
+
+
 def cmd_export(args, settings) -> None:
     with db.session() as conn:
         ids = [r["id"] for r in conn.execute("SELECT id FROM items WHERE available = 1")]
@@ -477,6 +483,9 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fn=cmd_analyze)
 
     sub.add_parser("status", help="library counts and last sync").set_defaults(fn=cmd_status)
+    sub.add_parser("stats", help="LLM calls, tokens and API-equivalent cost by step").set_defaults(
+        fn=cmd_stats
+    )
 
     p = sub.add_parser("playlists", help="list playlists; turn syncing on or off")
     p.add_argument("--refresh", action="store_true", help="re-read every playlist's details")
@@ -546,6 +555,11 @@ def main(argv: list[str] | None = None) -> None:
     settings = None if getattr(args, "no_settings", False) else load_settings()
     if args.cmd != "serve":
         logging.basicConfig(level=logging.WARNING)
+    if settings is not None:
+        try:
+            usage.install()  # every LLM call this command makes lands in llm_calls
+        except Exception as e:  # usage tracking must never stop a command
+            print(f"note: usage tracking is off for this run ({e})", file=sys.stderr)
     args.fn(args, settings)
 
 

@@ -277,7 +277,7 @@ def _record(
     cur = conn.execute(
         "INSERT INTO decisions (client_id, item_id, action, prev_status, new_status,"
         " prev_priority, new_priority, prev_analysis_status, new_analysis_status,"
-        " batch, group_id, reason, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " batch, group_id, reason, signal, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             client_id,
             item["id"],
@@ -291,6 +291,7 @@ def _record(
             batch,
             group_id,
             reason,
+            item.get("signal"),
             at or ts,
         ),
     )

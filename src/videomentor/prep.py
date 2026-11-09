@@ -87,7 +87,7 @@ def prep_batch(conn: sqlite3.Connection, items: list[dict], model: str) -> int:
         prompt += "Topic labels already in use (reuse when they fit): " + ", ".join(topics) + "\n\n"
     prompt += "\n\n".join(_describe(i) for i in items)
     try:
-        out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model)
+        out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model, step="prep")
     except llm.LLMError:
         for item in items:
             _bump_failure(conn, item["id"])

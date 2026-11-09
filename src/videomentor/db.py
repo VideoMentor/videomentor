@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS decisions (
     group_id INTEGER REFERENCES groups(id),
     reason TEXT,
     undone INTEGER NOT NULL DEFAULT 0,
+    -- The item's signal when you decided (it changes when kept videos are rescored).
+    signal INTEGER,
     at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS decisions_item ON decisions(item_id);
@@ -252,6 +254,29 @@ CREATE TABLE IF NOT EXISTS sessions (
     device_hint TEXT
 );
 
+-- One row per LLM call: numbers and a prompt hash only, never prompt text or responses.
+-- cost_usd is what the API would charge; it isn't billed on Pro or Max plans.
+CREATE TABLE IF NOT EXISTS llm_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL,
+    step TEXT NOT NULL,
+    item_id TEXT,
+    model TEXT,
+    ok INTEGER NOT NULL,
+    -- timeout, exit, unparseable, no_output, is_error
+    error_kind TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_creation_tokens INTEGER,
+    cost_usd REAL,
+    duration_ms INTEGER,
+    duration_api_ms INTEGER,
+    prompt_hash TEXT,
+    prompt_chars INTEGER
+);
+CREATE INDEX IF NOT EXISTS llm_calls_step_at ON llm_calls(step, at);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL,
@@ -317,6 +342,9 @@ def init(conn: sqlite3.Connection) -> None:
     session_cols = {r["name"] for r in conn.execute("PRAGMA table_info(sessions)")}
     if "device_hint" not in session_cols:
         conn.execute("ALTER TABLE sessions ADD COLUMN device_hint TEXT")
+    decision_cols = {r["name"] for r in conn.execute("PRAGMA table_info(decisions)")}
+    if "signal" not in decision_cols:
+        conn.execute("ALTER TABLE decisions ADD COLUMN signal INTEGER")
     conn.commit()
 
 

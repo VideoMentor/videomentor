@@ -99,7 +99,9 @@ def save_proposals(conn: sqlite3.Connection, merges: list[dict]) -> int:
 def draft(conn: sqlite3.Connection, model: str) -> int:
     counts = dict(tagging.vocabulary(conn))
     prompt = "Tags (videos using each):\n" + "\n".join(f"{t} ({n})" for t, n in counts.items())
-    out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model, timeout=600)
+    out = llm.structured(
+        prompt, system=SYSTEM, schema=SCHEMA, model=model, timeout=600, step="tag_merge"
+    )
     return save_proposals(conn, validate(out.get("merges") or [], counts))
 
 

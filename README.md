@@ -13,6 +13,7 @@ Free and open source under the [GNU AGPL-3.0](LICENSE).
 | **Triage** | One card at a time: keep, archive, analyze first, or group related videos. Undo up to 20 steps. Pull extra videos from any channel (newest, oldest or a date range, with Shorts and live streams as switches). |
 | **Understand** | Kept videos get notes from their transcripts: the core idea, frameworks, one to three "try this week" actions, and a key moment with a timestamp checked against the real captions. |
 | **Apply** | An actions checklist, and training modules made of clips with exercises and a quiz. Play a module as one lesson in the app, or render it as a narrated video for your own use. |
+| **Review** | A Tags page for every tag, with its videos sortable by usefulness, length, words, notes and open actions. Insights shows your skills, keep rates, where your inbox piles up and how many tokens processing used. Home suggests one "Next up": the best video to watch, or one step to try. |
 
 It runs as a web app on your computer and installs on your phone's home screen. It works on iPhone, iPad and Mac, in portrait or landscape.
 
@@ -41,6 +42,7 @@ uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone
 | `vm prep` | Write card summaries, topics, tags and a signal score for new videos. |
 | `vm analyze` | Write notes for queued videos. |
 | `vm status` | Library counts and last sync. |
+| `vm stats` | LLM calls, tokens and cost by step, for all time and the last 7 days. The cost is what the API would charge; it is not billed on Pro or Max plans. |
 | `vm playlists` | List playlists; turn syncing on or off. |
 | `vm youtube-login` | Sign in to the YouTube Data API (read-only) for playlist dates and channel pulls. |
 | `vm train "<tag>"` | Build a training module from kept videos with that tag. |
@@ -55,7 +57,7 @@ uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone
 | `vm install-service` / `uninstall-service` | Start `vm serve` at login (macOS). |
 | `vm --version` | Version and build. |
 
-Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube and Claude requests the features need.
+Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube and Claude requests the features need. Usage tracking (`vm stats`) keeps only token counts and costs, on your Mac, for 180 days.
 
 ## Please read: YouTube and your own use
 - VideoMentor reads YouTube two ways: the official YouTube Data API (read-only) with your own Google Cloud client, and [yt-dlp](https://github.com/yt-dlp/yt-dlp) using your browser's YouTube login. yt-dlp access is common in open-source tools but sits outside YouTube's API terms. You run VideoMentor on your own account, at your own risk.

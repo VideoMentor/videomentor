@@ -81,6 +81,7 @@ def score_batch(conn: sqlite3.Connection, items: list[dict], model: str, signal_
         system=system(signal_rules),
         schema=SCHEMA,
         model=model,
+        step="scoring",
     )
     by_id = {r.get("id"): r for r in out.get("items", []) if isinstance(r, dict)}
     done = 0

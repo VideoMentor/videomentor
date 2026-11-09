@@ -16,7 +16,7 @@ import {
   thumbnailOf,
 } from '../lib/format';
 import type { Card, ChannelSummary, ItemDetail, Playlist, TagHistory } from '../lib/types';
-import { navigate } from '../state/nav';
+import { navigate, openTag } from '../state/nav';
 import { playlistSource, setSource } from '../state/source';
 import { useInfo, type InfoTarget } from '../state/info';
 
@@ -264,6 +264,15 @@ function TagInfo({ tag }: { tag: string }) {
           {data.total} video{data.total === 1 ? '' : 's'} with this tag · {items.length} you’ve touched
         </p>
       )}
+      <button
+        className="inline-link see-all-tag"
+        onClick={() => {
+          close();
+          openTag({ tag: data?.tag ?? tag, status: 'all' });
+        }}
+      >
+        {data ? `See all ${data.total.toLocaleString()} video${data.total === 1 ? '' : 's'}` : 'See all videos'} ›
+      </button>
       <button className="secondary train-from-tag" onClick={() => void buildTraining()} disabled={building === 'Starting…'}>
         🎓 Build training from this tag
       </button>

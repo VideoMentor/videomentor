@@ -1,4 +1,7 @@
-export type Tab = 'home' | 'deck' | 'ready' | 'library' | 'actions' | 'train' | 'playlists' | 'status';
+export type Tab = 'home' | 'deck' | 'ready' | 'library' | 'actions' | 'train' | 'playlists' | 'status' | 'tags' | 'insights';
+
+/** Screens reached from Home and Library rather than from the tab bar. */
+export const EXTRA_TABS: Tab[] = ['tags', 'insights'];
 
 const TABS: { id: Tab; label: string; icon: JSX.Element }[] = [
   {

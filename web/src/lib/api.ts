@@ -24,6 +24,12 @@ import type {
   ItemDetail,
   StatusResponse,
   TagHistory,
+  TagRow,
+  TagItemStatus,
+  TagItemsResponse,
+  Insights,
+  NextUpMode,
+  NextUpResponse,
 } from './types';
 import type { TouchEvent } from './events';
 import { isCacheable, offlineStore, withTimeout } from './offlineStore';
@@ -178,6 +184,16 @@ export function libraryUrl(q: string, status = 'kept'): string {
   return `/api/library?${params.toString()}`;
 }
 
+export function tagItemsUrl(tag: string, status: TagItemStatus = 'kept'): string {
+  return `/api/tags/${encodeURIComponent(tag)}/items?status=${status}`;
+}
+
+export function nextUpUrl(mode: NextUpMode, skill?: string): string {
+  const params = new URLSearchParams({ mode });
+  if (skill) params.set('skill', skill);
+  return `/api/next-up?${params.toString()}`;
+}
+
 export function itemUrl(id: string): string {
   return `/api/items/${encodeURIComponent(id)}`;
 }
@@ -292,6 +308,15 @@ export const api = {
 
   tagHistory: (tag: string, signal?: AbortSignal) =>
     request<TagHistory>(`/api/tags/${encodeURIComponent(tag)}/history`, { signal }),
+
+  tags: (signal?: AbortSignal) => request<{ tags: TagRow[] }>('/api/tags', { signal }).then((r) => r?.tags ?? []),
+
+  tagItems: (tag: string, status: TagItemStatus = 'kept', signal?: AbortSignal) =>
+    request<TagItemsResponse>(tagItemsUrl(tag, status), { signal }),
+
+  insights: (signal?: AbortSignal) => request<Insights>('/api/insights', { signal }),
+
+  nextUp: (mode: NextUpMode, skill?: string, signal?: AbortSignal) => request<NextUpResponse>(nextUpUrl(mode, skill), { signal }),
 
   channel: (who: { channel_id?: string | null; name?: string | null }, signal?: AbortSignal) =>
     request<ChannelSummary>(channelUrl(who), { signal }),

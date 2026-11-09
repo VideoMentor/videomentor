@@ -7,6 +7,7 @@ import { useInfo } from '../state/info';
 import { SearchBox } from '../components/SearchBox';
 import { GroupedRows, ListControls, ToggleTitle, useListView } from '../components/ListControls';
 import { WIDE, useDebounced, useMediaQuery } from '../state/hooks';
+import { navigate } from '../state/nav';
 
 const SORTS: LibrarySort[] = ['decided', 'posted', 'saved', 'signal', 'title', 'analyzed'];
 
@@ -55,7 +56,15 @@ export function LibraryScreen({ online }: { online: boolean }) {
     <section className="page" aria-label="Library">
       <header className="page-head">
         <ToggleTitle title="Library" open={view.controls} onToggle={() => change({ controls: !view.controls })} />
-        <span className="muted small">{items.length ? `${items.length} ${what}` : ''}</span>
+        <span className="head-links">
+          <span className="muted small">{items.length ? `${items.length} ${what}` : ''}</span>
+          <button className="link-btn small" onClick={() => navigate('tags')}>
+            Tags
+          </button>
+          <button className="link-btn small" onClick={() => navigate('insights')}>
+            Insights
+          </button>
+        </span>
       </header>
       <div className="search">
         <SearchBox value={q} onChange={setQ} placeholder={`Search ${what} videos`} label={`Search ${what} videos`} />

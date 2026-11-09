@@ -1,7 +1,7 @@
 // Action check-offs and notes made while the Mac can't be reached: saved here, sent later
 // with the swipe queue. Repeat changes to one action merge, so the latest one wins.
 import { readJSON, writeJSON } from '../state/storage';
-import { ApiError } from './api';
+import { ApiError, api, isNetworkError } from './api';
 import { offlineStore } from './offlineStore';
 import type { ActionItem, ActionStatus } from './types';
 
@@ -59,5 +59,23 @@ export async function applyToSavedActions(id: number, patch: ActionPatch): Promi
     if (!saved?.actions) continue;
     const actions = saved.actions.map((a) => (a.id === id ? { ...a, ...patch, note: patch.note ?? a.note } : a));
     await store.set(key, { ...saved, actions });
+  }
+}
+
+/** One action change, the way every screen makes it: sent now, or (with no connection)
+ *  saved for later and applied to the saved Actions lists. Other errors are passed on. */
+export async function sendActionUpdate(
+  id: number,
+  patch: ActionPatch,
+  send: (id: number, patch: ActionPatch) => Promise<unknown> = (i, p) => api.updateAction(i, p),
+): Promise<'sent' | 'queued'> {
+  try {
+    await send(id, patch);
+    return 'sent';
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    queueActionUpdate(id, patch);
+    void applyToSavedActions(id, patch); // IndexedDB can be slow on iOS; never hold the screen
+    return 'queued';
   }
 }

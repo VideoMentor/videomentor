@@ -117,7 +117,7 @@ def tag_batch(conn: sqlite3.Connection, items: list[dict], model: str) -> int:
         prompt += "Existing tags (reuse when they fit): " + ", ".join(t for t, _ in vocab_list)
         prompt += "\n\n"
     prompt += "\n\n".join(_describe(i) for i in items)
-    out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model)
+    out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model, step="tagging")
     by_id = {r.get("id"): r for r in out.get("items", []) if isinstance(r, dict)}
     done = 0
     for item in items:

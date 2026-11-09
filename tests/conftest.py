@@ -25,6 +25,16 @@ def no_network(monkeypatch):
     monkeypatch.setattr(youtube_api, "_get_json", offline)
 
 
+@pytest.fixture(autouse=True)
+def no_llm_recorder():
+    """Each test starts without the usage recorder that the app and CLI install."""
+    from videomentor import llm
+
+    llm.set_recorder(None)
+    yield
+    llm.set_recorder(None)
+
+
 @pytest.fixture
 def conn():
     c = db.connect()

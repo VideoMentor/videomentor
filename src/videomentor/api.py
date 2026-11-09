@@ -24,6 +24,7 @@ from . import (
     auth,
     channel_pull,
     db,
+    insights,
     library,
     markdown,
     playlists,
@@ -33,6 +34,7 @@ from . import (
     sync,
     tag_merge,
     training,
+    usage,
     youtube_api,
 )
 from .config import Settings, load_settings, save_settings
@@ -139,6 +141,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
     async def lifespan(_: FastAPI):
         with db.session():
             pass  # create the schema before the first request
+        usage.install()  # the worker's and training's LLM calls land in llm_calls
         auth.redact_access_log()
         if worker:
             worker.start()
@@ -357,6 +360,31 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
     @app.post("/api/events", dependencies=[api])
     def events(body: EventsIn, c: sqlite3.Connection = Depends(conn)):
         return {"stored": library.record_events(c, [e.model_dump() for e in body.events])}
+
+    @app.get("/api/tags", dependencies=[api])
+    def tags_list(c: sqlite3.Connection = Depends(conn)):
+        return {"tags": insights.tags(c)}
+
+    # :path so tags with a slash ("9/11") route; /history and /items end differently.
+    @app.get("/api/tags/{tag:path}/items", dependencies=[api])
+    def tag_items(
+        tag: str,
+        status: Literal["kept", "inbox", "archived", "all"] = "kept",
+        c: sqlite3.Connection = Depends(conn),
+    ):
+        return insights.tag_items(c, tag, status)
+
+    @app.get("/api/insights", dependencies=[api])
+    def insights_get(c: sqlite3.Connection = Depends(conn)):
+        return insights.insights(c, settings.skill_map)
+
+    @app.get("/api/next-up", dependencies=[api])
+    def next_up(
+        mode: Literal["watch", "apply"] = "watch",
+        skill: str | None = Query(default=None, max_length=100),
+        c: sqlite3.Connection = Depends(conn),
+    ):
+        return insights.next_up(c, mode, skill or None)
 
     @app.get("/api/tags/{tag}/history", dependencies=[api])
     def tag_history(tag: str, c: sqlite3.Connection = Depends(conn)):

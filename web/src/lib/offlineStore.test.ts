@@ -66,6 +66,17 @@ describe('when the Mac app is down but Tailscale answers', () => {
   });
 });
 
+describe('which screens are saved', () => {
+  it('keeps tags and insights, not next up', async () => {
+    const { isCacheable } = await import('./offlineStore');
+    expect(isCacheable('/api/tags')).toBe(true);
+    expect(isCacheable('/api/tags/sales%20calls/items?status=kept')).toBe(true);
+    expect(isCacheable('/api/insights')).toBe(true);
+    expect(isCacheable('/api/next-up?mode=apply')).toBe(false);
+    expect(isCacheable('/api/tags/sales/history')).toBe(false);
+  });
+});
+
 describe('withTimeout', () => {
   it('gives the fallback when a promise never settles', async () => {
     const { withTimeout } = await import('./offlineStore');

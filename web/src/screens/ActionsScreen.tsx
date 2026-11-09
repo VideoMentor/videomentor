@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthError, api, isNetworkError } from '../lib/api';
 import { groupByVideo } from '../lib/actionsView';
-import { applyToSavedActions, queueActionUpdate, type ActionPatch } from '../lib/actionQueue';
+import { sendActionUpdate, type ActionPatch } from '../lib/actionQueue';
 import { formatDuration, momentUrl, normalizeCard, relativeTime, thumbnailOf } from '../lib/format';
 import type { ActionCounts, ActionItem, ActionStatus } from '../lib/types';
 import { useInfo } from '../state/info';
@@ -54,30 +54,22 @@ export function ActionsScreen({ online }: { online: boolean }) {
           }
         : c,
     );
-    try {
-      await api.updateAction(a.id, { status: next });
-    } catch (err) {
-      if (isNetworkError(err)) offlineChange(a.id, { status: next });
-      else void load();
-    }
+    await change(a.id, { status: next });
   };
 
-  // Offline: keep the change on screen, save it for later, and sync it with the swipes.
-  const offlineChange = (id: number, patch: ActionPatch) => {
-    queueActionUpdate(id, patch);
-    void applyToSavedActions(id, patch);
-    setQueuedNote(true);
+  // Offline, the change stays on screen and is saved to sync later with the swipes.
+  const change = async (id: number, patch: ActionPatch) => {
+    try {
+      if ((await sendActionUpdate(id, patch)) === 'queued') setQueuedNote(true);
+    } catch {
+      void load();
+    }
   };
 
   const saveNote = async (a: ActionItem) => {
     setEditing(null);
     setRows((rs) => rs?.map((r) => (r.id === a.id ? { ...r, note: draft.trim() || null } : r)) ?? rs);
-    try {
-      await api.updateAction(a.id, { note: draft });
-    } catch (err) {
-      if (isNetworkError(err)) offlineChange(a.id, { note: draft });
-      else void load();
-    }
+    await change(a.id, { note: draft });
   };
 
   return (

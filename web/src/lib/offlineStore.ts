@@ -104,7 +104,8 @@ export function setOfflineStore(s: OfflineStore): void {
   current = s;
 }
 
-/** Screens worth reading offline: the library (not searches), ready, notes, actions, training. */
+/** Screens worth reading offline: the library (not searches), ready, notes, actions, training,
+ *  tags and insights. Next up isn't: an old suggestion is worse than none. */
 export function isCacheable(path: string): boolean {
   if (path.startsWith('/api/library?')) return !/[?&]q=/.test(path);
   return (
@@ -112,6 +113,9 @@ export function isCacheable(path: string): boolean {
     /^\/api\/items\/[^/]+$/.test(path) ||
     path.startsWith('/api/actions?') ||
     path === '/api/training' ||
-    /^\/api\/training\/\d+$/.test(path)
+    /^\/api\/training\/\d+$/.test(path) ||
+    path === '/api/tags' ||
+    /^\/api\/tags\/[^/]+\/items(\?|$)/.test(path) ||
+    path === '/api/insights'
   );
 }
