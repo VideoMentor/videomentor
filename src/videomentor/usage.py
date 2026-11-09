@@ -32,6 +32,7 @@ COLUMNS = (
     "duration_api_ms",
     "prompt_hash",
     "prompt_chars",
+    "backend",
 )
 NOT_BILLED = "Cost is API-equivalent: what the API would charge, not billed on Pro or Max plans."
 

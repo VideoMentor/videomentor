@@ -273,7 +273,9 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     duration_ms INTEGER,
     duration_api_ms INTEGER,
     prompt_hash TEXT,
-    prompt_chars INTEGER
+    prompt_chars INTEGER,
+    -- claude_code or api; NULL on older rows means claude_code
+    backend TEXT
 );
 CREATE INDEX IF NOT EXISTS llm_calls_step_at ON llm_calls(step, at);
 
@@ -345,6 +347,9 @@ def init(conn: sqlite3.Connection) -> None:
     decision_cols = {r["name"] for r in conn.execute("PRAGMA table_info(decisions)")}
     if "signal" not in decision_cols:
         conn.execute("ALTER TABLE decisions ADD COLUMN signal INTEGER")
+    call_cols = {r["name"] for r in conn.execute("PRAGMA table_info(llm_calls)")}
+    if "backend" not in call_cols:
+        conn.execute("ALTER TABLE llm_calls ADD COLUMN backend TEXT")
     conn.commit()
 
 

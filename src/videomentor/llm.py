@@ -1,8 +1,8 @@
 """Structured LLM calls through the local ``claude -p`` CLI or the Anthropic API.
 
 The CLI runs on your Claude plan, so there's no API key. Calls are stripped down:
-no tools, no MCP servers, no settings or plugins, and no saved session. The API
-backend (``llm_api``) is used when the CLI is missing and ``ANTHROPIC_API_KEY`` is set.
+no tools, no MCP servers, no settings or plugins, and no saved session. ``ai.backend``
+picks the CLI, the API backend (``llm_api``) or neither, from the ``ai_backend`` setting.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import shutil
 import subprocess
 import tempfile
@@ -88,7 +87,13 @@ def structured(
     ``effort`` applies to the API backend only. Each call (ok or failed) goes to the
     recorder, if one is set, as one row of numbers.
     """
-    binary = _cli_or_api()
+    from videomentor import ai
+
+    settings = ai.current()
+    backend = ai.backend(settings)
+    if backend == "off":
+        raise LLMError(ai.off_reason(settings.ai_backend))
+    binary = claude_binary() if backend == "claude_code" else None
     row: dict = {
         "step": step,
         "item_id": item_id,
@@ -104,6 +109,7 @@ def structured(
         "duration_api_ms": None,
         "prompt_hash": prompt_hash(system, schema),
         "prompt_chars": len(system) + len(prompt),
+        "backend": backend,
     }
     try:
         if binary is None:
@@ -129,20 +135,6 @@ def structured(
         raise
     finally:
         _emit(row)
-
-
-def _cli_or_api() -> str | None:
-    """The claude binary, or None to use the API backend.
-
-    Interim rule until ``ai.backend()`` decides: the API runs only when the CLI is
-    missing and ``ANTHROPIC_API_KEY`` is set. Otherwise the CLI's error stands.
-    """
-    try:
-        return claude_binary()
-    except LLMError:
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            return None
-        raise
 
 
 def _fail(row: dict, kind: str, message: str) -> LLMError:

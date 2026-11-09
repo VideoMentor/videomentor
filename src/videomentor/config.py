@@ -32,6 +32,11 @@ class Settings:
     # Shared secret a device presents once at /pair.
     pair_code: str = ""
     sync_interval_hours: float = 6.0
+    # Which AI runs the LLM steps: "auto" (Claude Code if installed, else the API if
+    # ANTHROPIC_API_KEY is set), "claude_code", "api" or "off".
+    ai_backend: str = "auto"
+    # API spending stops for the rest of the local month at this many US dollars.
+    ai_monthly_cap_usd: float = 5.0
     prep_model: str = "haiku"
     analysis_model: str = "sonnet"
     prep_batch_size: int = 20

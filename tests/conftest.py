@@ -78,3 +78,13 @@ def add(
     )
     conn.commit()
     return f"yt:{vid}"
+
+
+@pytest.fixture(autouse=True)
+def default_ai_settings():
+    """Each test starts with the default AI choice (auto), not one an app left behind."""
+    from videomentor import ai
+
+    ai.configure(None)
+    yield
+    ai.configure(None)

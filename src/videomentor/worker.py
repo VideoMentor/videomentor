@@ -14,7 +14,7 @@ import threading
 import time
 from datetime import UTC, datetime
 
-from . import analyze, backup, db, llm, prep, scoring, sync, tagging
+from . import ai, analyze, backup, db, llm, prep, scoring, sync, tagging
 from .config import Settings, library_home
 
 log = logging.getLogger(__name__)
@@ -95,33 +95,42 @@ class Worker:
             self.backup_tick()
             self.stop.wait(3600)
 
+    def _ai_ok(self, conn) -> bool:
+        """Whether AI may run now. When it may not, the reason shows in ``ai.status``."""
+        ok, _ = ai.allowed(conn, self.settings)
+        return ok
+
+    def prep_tick(self) -> int:
+        """One pass of enrichment, then card prep, tagging and scoring (when AI may run)."""
+        did = 0
+        with db.session() as conn:
+            self.state["prep"] = "enriching"
+            did += sync.enrich_pending(conn, self.settings)
+            self.state["prep"] = "prepping"
+            batch = prep.pending(conn, self.settings.prep_batch_size)
+            if batch and self._ai_ok(conn):
+                did += prep.prep_batch(conn, batch, self.settings.prep_model)
+            self.state["prep"] = "tagging"
+            batch = tagging.pending(conn, self.settings.prep_batch_size)
+            if batch and self._ai_ok(conn):
+                did += tagging.tag_batch(conn, batch, self.settings.prep_model)
+            self.state["prep"] = "scoring"
+            batch = scoring.pending(conn, self.settings.prep_batch_size)
+            if batch and self._ai_ok(conn):
+                did += scoring.score_batch(
+                    conn,
+                    batch,
+                    self.settings.prep_model,
+                    scoring.rules(self.settings.signal_areas, self.settings.signal_guidance),
+                )
+        return did
+
     def _prep_loop(self) -> None:
         backoff = 0.0
         while not self.stop.is_set():
             did = 0
             try:
-                with db.session() as conn:
-                    self.state["prep"] = "enriching"
-                    did += sync.enrich_pending(conn, self.settings)
-                    self.state["prep"] = "prepping"
-                    batch = prep.pending(conn, self.settings.prep_batch_size)
-                    if batch:
-                        did += prep.prep_batch(conn, batch, self.settings.prep_model)
-                    self.state["prep"] = "tagging"
-                    batch = tagging.pending(conn, self.settings.prep_batch_size)
-                    if batch:
-                        did += tagging.tag_batch(conn, batch, self.settings.prep_model)
-                    self.state["prep"] = "scoring"
-                    batch = scoring.pending(conn, self.settings.prep_batch_size)
-                    if batch:
-                        did += scoring.score_batch(
-                            conn,
-                            batch,
-                            self.settings.prep_model,
-                            scoring.rules(
-                                self.settings.signal_areas, self.settings.signal_guidance
-                            ),
-                        )
+                did = self.prep_tick()
                 backoff = 0.0
             except llm.LLMError as e:
                 self._error("prep", e)
@@ -136,8 +145,38 @@ class Worker:
                 self.work_now.wait(300)
             self.work_now.clear()
 
-    def _analysis_loop(self) -> None:
+    def analysis_tick(self) -> dict | None:
+        """Analyze the next due item, if AI may run. Returns the item it worked on."""
         trickle = self.settings.kept_trickle_minutes * 60
+        item = None
+        with db.session() as conn:
+            if not self._ai_ok(conn):
+                return None
+            candidate = analyze.next_item(conn)
+            if candidate and (
+                candidate["priority"] or time.monotonic() - self._last_trickle >= trickle
+            ):
+                item = candidate
+            if item:
+                self.state["analysis"] = f"analyzing {item['id']}"
+                try:
+                    analyze.analyze_item(
+                        conn,
+                        item,
+                        chrome_profile=self.settings.watch_later_profile,
+                        model=self.settings.analysis_model,
+                        skills=self.settings.skill_map,
+                        signal_rules=scoring.rules(
+                            self.settings.signal_areas, self.settings.signal_guidance
+                        ),
+                    )
+                except Exception as e:  # noqa: BLE001
+                    self._error(f"analysis {item['id']}", e)
+                if not item["priority"]:
+                    self._last_trickle = time.monotonic()
+        return item
+
+    def _analysis_loop(self) -> None:
         with db.session() as conn:
             # A crash mid-analysis leaves items "running"; put them back in the queue.
             conn.execute(
@@ -145,30 +184,7 @@ class Worker:
             )
         while not self.stop.is_set():
             self.analyze_now.clear()
-            item = None
-            with db.session() as conn:
-                candidate = analyze.next_item(conn)
-                if candidate and (
-                    candidate["priority"] or time.monotonic() - self._last_trickle >= trickle
-                ):
-                    item = candidate
-                if item:
-                    self.state["analysis"] = f"analyzing {item['id']}"
-                    try:
-                        analyze.analyze_item(
-                            conn,
-                            item,
-                            chrome_profile=self.settings.watch_later_profile,
-                            model=self.settings.analysis_model,
-                            skills=self.settings.skill_map,
-                            signal_rules=scoring.rules(
-                                self.settings.signal_areas, self.settings.signal_guidance
-                            ),
-                        )
-                    except Exception as e:  # noqa: BLE001
-                        self._error(f"analysis {item['id']}", e)
-                    if not item["priority"]:
-                        self._last_trickle = time.monotonic()
+            item = self.analysis_tick()
             self.state["analysis"] = "idle"
             if not item:
                 self.analyze_now.wait(60)

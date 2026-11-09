@@ -58,7 +58,7 @@ def _get_client(row: dict) -> Any:
         key = os.environ.get("ANTHROPIC_API_KEY")
         if not key:
             raise _fail(row, "auth", "No Anthropic API key is set")
-        _client = anthropic.Anthropic(api_key=key)
+        _client = anthropic.Anthropic(api_key=key, max_retries=1)
     return _client
 
 

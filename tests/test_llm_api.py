@@ -290,10 +290,10 @@ def test_structured_routes_to_api_when_cli_missing_and_key_set(stub, monkeypatch
     assert r["cost_usd"] == pytest.approx(120 * 0.10 / 1e6 + 40 * 0.50 / 1e6)
 
 
-def test_structured_without_cli_or_key_keeps_cli_error(monkeypatch):
+def test_structured_without_cli_or_key_says_ai_is_off(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(llm.shutil, "which", lambda name: None)
-    with pytest.raises(llm.LLMError, match="the `claude` CLI is not on PATH"):
+    with pytest.raises(llm.LLMError, match="AI is off: Claude Code isn't installed"):
         llm.structured("hello", system="SYS", schema=SCHEMA, model="haiku")
 
 
@@ -313,7 +313,7 @@ def test_real_client_uses_only_the_env_key(monkeypatch):
     monkeypatch.setattr(llm_api.anthropic, "Anthropic", fake_anthropic)
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
     assert call() == {"items": []}
-    assert seen == {"api_key": FAKE_KEY}
+    assert seen == {"api_key": FAKE_KEY, "max_retries": 1}
 
 
 def test_missing_key_raises_auth_without_a_client(monkeypatch):

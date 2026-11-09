@@ -21,12 +21,14 @@ from pydantic import BaseModel, Field
 
 from . import (
     actions,
+    ai,
     auth,
     backup,
     channel_pull,
     db,
     insights,
     library,
+    llm,
     markdown,
     playlists,
     progress,
@@ -112,6 +114,14 @@ class ActionIn(BaseModel):
     note: str | None = None
 
 
+class AiIn(BaseModel):
+    backend: Literal["auto", "claude_code", "api", "off"] | None = None
+    cap_usd: float | None = Field(default=None, ge=0, le=ai.MAX_CAP_USD)
+
+
+CHECK_SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
+
+
 class TrainIn(BaseModel):
     tag: str
     goal: str | None = None
@@ -136,6 +146,7 @@ class GroupDecideIn(BaseModel):
 def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> FastAPI:
     settings = settings or load_settings()
     worker = Worker(settings) if run_worker else None
+    ai.configure(settings)  # llm.structured reads the backend choice from these
     lockout = auth.Lockout()
 
     @asynccontextmanager
@@ -257,6 +268,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             "counts": library.counts(c),
             "last_sync": sync.last_sync(c),
             "worker": worker.state if worker else None,
+            "ai": ai.status(c, settings),
             "youtube_api": youtube_api.state(),
             "backups": backup.summary(library_home()),
             "playlists_enabled": c.execute(
@@ -474,6 +486,49 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
         save_settings(settings)
         return _settings_out()
 
+    @app.get("/api/ai", dependencies=[api])
+    def ai_get(c: sqlite3.Connection = Depends(conn)):
+        return ai.status(c, settings)
+
+    @app.put("/api/ai", dependencies=[api])
+    def ai_put(body: AiIn, c: sqlite3.Connection = Depends(conn)):
+        # The worker shares this Settings object, so the change applies on its next batch.
+        if body.backend is not None:
+            settings.ai_backend = body.backend
+        if body.cap_usd is not None:
+            settings.ai_monthly_cap_usd = float(body.cap_usd)
+        save_settings(settings)
+        if worker:
+            worker.work_now.set()
+            worker.analyze_now.set()
+        return ai.status(c, settings)
+
+    @app.post("/api/ai/check", dependencies=[api])
+    def ai_check(c: sqlite3.Connection = Depends(conn)):
+        """One tiny structured call on the current backend, to show the setup works."""
+        backend = ai.backend(settings)
+        ok, reason = ai.allowed(c, settings)
+        if not ok:
+            return {"ok": False, "backend": backend, "message": reason}
+        try:
+            llm.structured(
+                'Reply with {"ok": true}.',
+                system="You check that structured output works. Answer only with the JSON.",
+                schema=CHECK_SCHEMA,
+                model="haiku",
+                timeout=60,
+                step="check",
+            )
+        except llm.LLMError as e:
+            return {"ok": False, "backend": backend, "message": str(e)[:300]}
+        label = "Claude Code" if backend == "claude_code" else "the API key"
+        return {"ok": True, "backend": backend, "message": f"AI works through {label}"}
+
+    def require_ai(c: sqlite3.Connection) -> None:
+        ok, reason = ai.allowed(c, settings)
+        if not ok:
+            raise HTTPException(409, reason)
+
     @app.post("/api/signal/rescore", dependencies=[api])
     def signal_rescore(c: sqlite3.Connection = Depends(conn)):
         queued = scoring.requeue(c)
@@ -508,6 +563,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
 
     @app.post("/api/training", dependencies=[api])
     def training_create(body: TrainIn, c: sqlite3.Connection = Depends(conn)):
+        require_ai(c)
         try:
             mid = training.create(
                 c, body.tag.strip(), (body.goal or "").strip() or None, body.minutes

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from . import (
+    ai,
     analyze,
     auth,
     backup,
@@ -206,6 +207,7 @@ def cmd_tags(args, settings) -> None:
     """Draft a tag merge list for you to review on the phone (Status > Tidy tags)."""
     with db.session() as conn:
         if args.draft:
+            require_ai(conn, settings)
             print("Drafting merges with", settings.analysis_model, "...", flush=True)
             print(f"{tag_merge.draft(conn, settings.analysis_model)} merges proposed")
         merges = [m for m in tag_merge.list_merges(conn) if m["status"] == "proposed"]
@@ -215,9 +217,17 @@ def cmd_tags(args, settings) -> None:
         print(f"\n{len(tags)} tags now; {len(merges)} proposed merges waiting for review.")
 
 
+def require_ai(conn, settings) -> None:
+    """Stop with the plain reason when AI can't run now (off, or over the monthly cap)."""
+    ok, reason = ai.allowed(conn, settings)
+    if not ok:
+        sys.exit(reason)
+
+
 def cmd_train(args, settings) -> None:
     """Build a training module for a tag (Sonnet) and write it as Markdown."""
     with db.session() as conn:
+        require_ai(conn, settings)
         try:
             mid = training.create(conn, args.tag, args.goal, args.minutes)
         except training.NotEnoughMaterial:
@@ -630,6 +640,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.cmd != "serve":
         logging.basicConfig(level=logging.WARNING)
     if settings is not None:
+        ai.configure(settings)  # llm.structured reads the backend choice from these
         try:
             usage.install()  # every LLM call this command makes lands in llm_calls
         except Exception as e:  # usage tracking must never stop a command
