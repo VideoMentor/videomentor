@@ -3,7 +3,16 @@
 # Usage: mac/scripts/build-app.sh   (does not run, install or open the app)
 set -euo pipefail
 
-IDENTITY="${VM_SIGN_IDENTITY:-Apple Development: christopher larkin (P37YV6YD5L)}"
+# Signing identity: VM_SIGN_IDENTITY if set, else the first valid "Apple Development"
+# identity in the keychain, else ad-hoc ("-").
+IDENTITY="${VM_SIGN_IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/^ *[0-9][0-9]*) [0-9A-F]* "\(Apple Development: .*\)".*/\1/p' | head -n 1)"
+fi
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="-"
+fi
 
 MAC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_DIR="$(cd "$MAC_DIR/.." && pwd)"
@@ -40,7 +49,13 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"
 
-echo "Signing as: $IDENTITY"
+if [ "$IDENTITY" = "-" ]; then
+  echo "Signing as: ad-hoc (no identity)"
+  echo "WARNING: ad-hoc signing means macOS permissions (Start at Login and similar) may not survive rebuilds."
+  echo "         Set VM_SIGN_IDENTITY to a certificate name, or add an Apple Development certificate in Xcode."
+else
+  echo "Signing as: $IDENTITY"
+fi
 codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 echo "Built $APP"
