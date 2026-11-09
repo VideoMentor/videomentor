@@ -138,8 +138,8 @@ describe('playlist and source helpers', () => {
     expect(savedBadge({ saved_in_labels: [], sources: ['youtube:watch_later'] })).toBe('Watch Later');
   });
   it('adds the source to deck URLs except for all', () => {
-    expect(deckUrl('main', 10, [], 'all')).toBe('/api/deck?deck=main&n=10');
-    expect(deckUrl('main', 10, [], 'pl:PLa')).toBe('/api/deck?deck=main&n=10&source=pl%3APLa');
+    expect(deckUrl(10, [], 'all')).toBe('/api/deck?deck=main&n=10');
+    expect(deckUrl(10, [], 'pl:PLa')).toBe('/api/deck?deck=main&n=10&source=pl%3APLa');
   });
 });
 
@@ -176,8 +176,8 @@ describe('analysis and signal', () => {
 
 describe('deck order', () => {
   it('adds sort, direction and start date to the deck URL', () => {
-    expect(deckUrl('main', 10, [], 'all', { sort: 'default', dir: 'desc', start: null })).toBe('/api/deck?deck=main&n=10');
-    expect(deckUrl('main', 10, [], 'wl', { sort: 'posted', dir: 'asc', start: '2024-03-04' })).toBe(
+    expect(deckUrl(10, [], 'all', { sort: 'default', dir: 'desc', start: null })).toBe('/api/deck?deck=main&n=10');
+    expect(deckUrl(10, [], 'wl', { sort: 'posted', dir: 'asc', start: '2024-03-04' })).toBe(
       '/api/deck?deck=main&n=10&source=wl&sort=posted&dir=asc&start=2024-03-04',
     );
   });

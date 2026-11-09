@@ -11,7 +11,7 @@ const PACK: OfflinePack = {
   actions: { all: [{ id: 1 }], open: [{ id: 1 }], done: [], skipped: [], counts: { open: 1, done: 0, skipped: 0, done_this_week: 0 } },
   training: { modules: [{ id: 3, title: 'T' }], details: { '3': { id: 3, module: { lessons: [] } } } },
   items: { 'yt:k1': { id: 'yt:k1', analysis: { core_idea: 'x' } }, 'yt:d1': { id: 'yt:d1' } },
-  decks: { main: [card('yt:d1')], music: [] },
+  decks: { main: [card('yt:d1')] },
 } as unknown as OfflinePack;
 
 describe('offline pack', () => {

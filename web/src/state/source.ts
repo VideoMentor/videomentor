@@ -1,18 +1,18 @@
 // Which saves the deck draws from: everything, Watch Later, all chosen playlists,
-// or one playlist. Remembered on this device.
+// one playlist, a pulled channel, or Not for learning (music and entertainment). Remembered on this device.
 import { useSyncExternalStore } from 'react';
+import { ALL } from '../lib/deck';
 import type { DeckOrder, DeckSource } from '../lib/types';
 import { readJSON, writeJSON } from './storage';
 
+export { ALL, ALL_PLAYLISTS, NOT_FOR_LEARNING, WATCH_LATER } from '../lib/deck';
+
 const KEY = 'vm.source.v1';
-export const ALL: DeckSource = { key: 'all', label: 'All saves' };
-export const WATCH_LATER: DeckSource = { key: 'wl', label: 'Watch Later' };
-export const ALL_PLAYLISTS: DeckSource = { key: 'playlists', label: 'All my playlists' };
 
 function valid(s: unknown): s is DeckSource {
   if (!s || typeof s !== 'object') return false;
   const o = s as DeckSource;
-  return typeof o.key === 'string' && typeof o.label === 'string' && /^(all|wl|playlists|pl:.+|ch:.+)$/.test(o.key);
+  return typeof o.key === 'string' && typeof o.label === 'string' && /^(all|wl|playlists|nl|pl:.+|ch:.+)$/.test(o.key);
 }
 
 let current: DeckSource = (() => {

@@ -71,6 +71,14 @@ class UndoIn(BaseModel):
     decision_id: int | None = None
 
 
+class UndoBatchIn(BaseModel):
+    batch: str = Field(min_length=1, max_length=80)
+
+
+class NotForLearningIn(BaseModel):
+    older_than_days: int = Field(default=30, ge=0, le=3650)
+
+
 class DeviceHintIn(BaseModel):
     hint: str = Field(max_length=20)
 
@@ -291,7 +299,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
         start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         c: sqlite3.Connection = Depends(conn),
     ):
-        if source not in ("all", "wl", "playlists") and not source.startswith(("pl:", "ch:")):
+        if source not in ("all", "wl", "playlists", "nl") and not source.startswith(("pl:", "ch:")):
             raise HTTPException(422, "unknown source")
         ids = [x for x in exclude.split(",") if x]
         cards = library.deck(c, deck, max(1, min(n, 50)), ids, source, sort, dir, start, no_ai(c))
@@ -338,6 +346,27 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             raise HTTPException(409, str(e)) from None
         for it in result["items"]:
             markdown.write_item(c, it["id"])
+        return result
+
+    @app.post("/api/undo-batch", dependencies=[api])
+    def undo_batch(body: UndoBatchIn, c: sqlite3.Connection = Depends(conn)):
+        try:
+            result = library.undo_batch(c, body.batch)
+        except library.UndoConflict as e:
+            raise HTTPException(409, str(e)) from None
+        for it in result["items"]:
+            markdown.write_item(c, it["id"])
+        return result
+
+    @app.get("/api/not-for-learning", dependencies=[api])
+    def not_for_learning(c: sqlite3.Connection = Depends(conn)):
+        return library.not_for_learning_counts(c)
+
+    @app.post("/api/not-for-learning/archive", dependencies=[api])
+    def not_for_learning_archive(body: NotForLearningIn, c: sqlite3.Connection = Depends(conn)):
+        result = library.archive_not_for_learning(c, body.older_than_days)
+        for r in c.execute("SELECT item_id FROM decisions WHERE batch = ?", (result["batch"],)):
+            markdown.write_item(c, r["item_id"])
         return result
 
     @app.post("/api/groups", dependencies=[api])
@@ -597,15 +626,12 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
         """Everything the phone keeps for when it can't reach this Mac: the kept and archived
         library, ready list, actions, training modules, the next cards of each deck, and
         the details (notes) behind every one of those videos."""
-        if source not in ("all", "wl", "playlists") and not source.startswith(("pl:", "ch:")):
+        if source not in ("all", "wl", "playlists", "nl") and not source.startswith(("pl:", "ch:")):
             raise HTTPException(422, "unknown source")
         n = max(10, min(cards, 200))
         ids = [x for x in exclude.split(",") if x]
         unprepped = no_ai(c)
-        decks = {
-            d: library.deck(c, d, n, ids, source, include_unprepped=unprepped)
-            for d in ("main", "music")
-        }
+        decks = {"main": library.deck(c, "main", n, ids, source, include_unprepped=unprepped)}
         kept = library.library_items(c, "kept", None)
         archived = library.library_items(c, "archived", None)
         actions.collect(c)
@@ -616,7 +642,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             if full and full.get("status") == "ready":
                 details[str(m["id"])] = full | {"video": render.status(m["id"])}
         items = {}
-        for card in [*kept, *decks["main"], *decks["music"]]:
+        for card in [*kept, *decks["main"]]:
             if card["id"] not in items:
                 try:
                     items[card["id"]] = library.item_detail(c, card["id"])

@@ -10,12 +10,15 @@ import { TidyTagsScreen } from './TidyTagsScreen';
 import { ProgressCard } from '../components/ProgressCard';
 import { DelightSettingsCard } from '../kit/delight/DelightSettingsCard';
 import { SignalSettingsScreen } from './SignalSettingsScreen';
-import { AuthError, api, isNetworkError } from '../lib/api';
+import { ApiError, AuthError, api, isNetworkError } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import { backupLine } from '../lib/backupLine';
 import type { AiChoice, AiStatus, PairedDevice, StatusResponse } from '../lib/types';
 import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped, parseCap } from '../lib/aiView';
 import { queue } from '../state/queue';
+import { OLDER_THAN_DAYS, archiveQuestion, clearLastBatch, nlLine, readLastBatch, saveLastBatch, type LastBatch } from '../lib/notForLearning';
+import { storage } from '../state/storage';
+import type { NotForLearning } from '../lib/types';
 
 interface Props {
   status: StatusResponse | null;
@@ -28,7 +31,6 @@ interface Props {
 
 const COUNT_LABELS: [keyof StatusResponse['counts'], string][] = [
   ['inbox', 'Main deck'],
-  ['music_inbox', 'Music deck'],
   ['kept', 'Kept'],
   ['archived', 'Archived'],
   ['queued', 'Waiting for analysis'],
@@ -128,6 +130,7 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
         </div>
 
         {status?.ai && <AiCard ai={status.ai} online={online} onChanged={onRefresh} />}
+        <NotForLearningCard online={online} onChanged={onRefresh} />
         <ProgressCard online={online} />
         <OfflinePackCard online={online} />
         <StartScreenCard />
@@ -353,6 +356,103 @@ function StartScreenCard() {
       </label>
       <p className="muted small">Watch next suggests the best video in the deck. Apply next suggests a step to try, with Done and Skip.</p>
       <p className="muted small">The app turns with your phone. To keep it upright, use Rotation Lock in Control Center.</p>
+    </div>
+  );
+}
+
+/** Music and entertainment waiting in the inbox: archive the old ones in one step, with Undo. */
+function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(): void }) {
+  const [counts, setCounts] = useState<NotForLearning | null>(null);
+  const [last, setLast] = useState<LastBatch | null>(() => readLastBatch(storage));
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const load = () =>
+    api
+      .notForLearning()
+      .then(setCounts)
+      .catch(() => {});
+  useEffect(() => {
+    if (online) void load();
+  }, [online]);
+
+  const errText = (err: unknown) => (isNetworkError(err) ? 'This needs a connection to your Mac.' : (err as Error).message);
+
+  const archive = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.archiveNotForLearning(OLDER_THAN_DAYS);
+      setConfirming(false);
+      if (r.archived > 0) {
+        const b = { batch: r.batch, archived: r.archived };
+        saveLastBatch(storage, b);
+        setLast(b);
+      } else {
+        setNote('Nothing older to archive.');
+      }
+      onChanged();
+      void load();
+    } catch (err) {
+      if (!(err instanceof AuthError)) setNote(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const undo = async () => {
+    if (!last) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.undoBatch(last.batch);
+      clearLastBatch(storage);
+      setLast(null);
+      setNote(r.undone.length ? `Brought back ${r.undone.length}.` : 'Nothing left to bring back.');
+      onChanged();
+      void load();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        clearLastBatch(storage);
+        setLast(null);
+        setNote('Some of these were decided again since, so they can’t all be undone.');
+      } else if (!(err instanceof AuthError)) {
+        setNote(errText(err));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card-block start-card">
+      <h4>Not for learning</h4>
+      <p>{counts ? nlLine(counts, OLDER_THAN_DAYS) : online ? 'Loading…' : 'Shows when you have signal.'}</p>
+      {confirming && counts ? (
+        <>
+          <p className="note">{archiveQuestion(counts.older)}</p>
+          <button className="primary" onClick={() => void archive()} disabled={!online || busy}>
+            {busy ? 'Archiving…' : `Archive ${counts.older.toLocaleString()}`}
+          </button>{' '}
+          <button className="secondary" onClick={() => setConfirming(false)} disabled={busy}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button className="secondary" onClick={() => setConfirming(true)} disabled={!online || busy || !counts || counts.older === 0}>
+          Archive the older ones
+        </button>
+      )}
+      {last && (
+        <p className="note">
+          Archived {last.archived.toLocaleString()}.{' '}
+          <button className="inline-link" onClick={() => void undo()} disabled={!online || busy}>
+            Undo
+          </button>
+        </p>
+      )}
+      {note && <p className="note small">{note}</p>}
+      <p className="muted small">Music and entertainment you saved. Swipe them from the deck’s “Not for learning” source instead.</p>
     </div>
   );
 }

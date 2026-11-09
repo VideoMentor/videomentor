@@ -1,6 +1,5 @@
 // Shapes from the API contract in docs/superpowers/specs/2026-10-25-youtube-swipe-design.md.
 
-export type DeckKey = 'main' | 'music';
 export type ItemStatus = 'inbox' | 'kept' | 'archived';
 export type AnalysisStatus = 'none' | 'queued' | 'running' | 'done' | 'failed';
 export type DecisionAction = 'keep' | 'archive' | 'prioritize';
@@ -105,7 +104,6 @@ export interface StatusCounts {
   inbox: number;
   kept: number;
   archived: number;
-  music_inbox: number;
   unprepped: number;
   pulled_inbox: number;
   queued: number;
@@ -448,3 +446,9 @@ export type NextUpMode = 'watch' | 'apply';
 export type NextUpResponse =
   | { mode: 'watch'; item: Card | null }
   | { mode: 'apply'; action: (Omit<ActionItem, 'item'> & { item_title: string; item_id: string; item?: Card | null }) | null };
+
+/** Inbox music and entertainment, and how many were saved more than the cutoff ago. */
+export interface NotForLearning {
+  inbox: number;
+  older: number;
+}

@@ -1,7 +1,6 @@
-// Local deck state for both decks (main and music). Pure reducer, persisted by
-// the caller. A "round" is one 10-card deck; stats reset when the next round
+// Local deck state. Pure reducer, persisted by the caller. A "round" is one 10-card deck; stats reset when the next round
 // starts.
-import type { Card, DeckKey } from './types';
+import type { Card, DeckSource } from './types';
 
 export type RoundAction = 'keep' | 'archive' | 'prioritize';
 
@@ -24,16 +23,14 @@ export interface DeckState {
   loaded: boolean;
 }
 
-export type DecksState = Record<DeckKey, DeckState>;
-
 export type DeckEvent =
   | { type: 'reset' }
-  | { type: 'loaded'; deck: DeckKey; cards: Card[] }
-  | { type: 'prefetched'; deck: DeckKey; cards: Card[] }
-  | { type: 'advance'; deck: DeckKey }
-  | { type: 'removed'; deck: DeckKey; ids: string[]; action: RoundAction }
-  | { type: 'restored'; deck: DeckKey; cards: Card[]; action: RoundAction }
-  | { type: 'front'; deck: DeckKey; cards: Card[] };
+  | { type: 'loaded'; cards: Card[] }
+  | { type: 'prefetched'; cards: Card[] }
+  | { type: 'advance' }
+  | { type: 'removed'; ids: string[]; action: RoundAction }
+  | { type: 'restored'; cards: Card[]; action: RoundAction }
+  | { type: 'front'; cards: Card[] };
 
 const SHOWN_LIMIT = 200;
 
@@ -41,8 +38,8 @@ export function emptyDeck(): DeckState {
   return { cards: [], next: null, shown: [], decided: 0, stats: { keep: 0, archive: 0, prioritize: 0 }, loaded: false };
 }
 
-export function initialDecks(): DecksState {
-  return { main: emptyDeck(), music: emptyDeck() };
+export function initialDeck(): DeckState {
+  return emptyDeck();
 }
 
 function remember(shown: string[], ids: string[]): string[] {
@@ -68,27 +65,22 @@ function freshRound(d: DeckState, cards: Card[]): DeckState {
   };
 }
 
-export function deckReducer(state: DecksState, ev: DeckEvent): DecksState {
-  // The deck source changed: both decks start over.
-  if (ev.type === 'reset') return initialDecks();
-  const d = state[ev.deck];
-  let out: DeckState;
+export function deckReducer(d: DeckState, ev: DeckEvent): DeckState {
+  // The deck source changed: the deck starts over.
+  if (ev.type === 'reset') return initialDeck();
   switch (ev.type) {
     case 'loaded':
-      out = freshRound(d, dedupeFront(ev.cards, []));
-      break;
+      return freshRound(d, dedupeFront(ev.cards, []));
     case 'prefetched': {
       const current = new Set(d.cards.map((c) => c.id));
-      out = { ...d, next: ev.cards.filter((c) => !current.has(c.id)) };
-      break;
+      return { ...d, next: ev.cards.filter((c) => !current.has(c.id)) };
     }
     case 'advance':
-      out = freshRound(d, d.next ?? []);
-      break;
+      return freshRound(d, d.next ?? []);
     case 'removed': {
       const ids = new Set(ev.ids);
       const n = ev.ids.length;
-      out = {
+      return {
         ...d,
         cards: d.cards.filter((c) => !ids.has(c.id)),
         next: d.next ? d.next.filter((c) => !ids.has(c.id)) : d.next,
@@ -96,30 +88,24 @@ export function deckReducer(state: DecksState, ev: DeckEvent): DecksState {
         decided: d.decided + n,
         stats: { ...d.stats, [ev.action]: d.stats[ev.action] + n },
       };
-      break;
     }
     case 'restored': {
       const n = ev.cards.length;
-      out = {
+      return {
         ...d,
         cards: dedupeFront(ev.cards, d.cards),
         decided: Math.max(0, d.decided - n),
         stats: { ...d.stats, [ev.action]: Math.max(0, d.stats[ev.action] - n) },
       };
-      break;
     }
     case 'front':
-      out = {
+      return {
         ...d,
         cards: dedupeFront(ev.cards, d.cards),
         next: d.next ? d.next.filter((c) => !ev.cards.some((x) => x.id === c.id)) : d.next,
         shown: remember(d.shown, ev.cards.map((c) => c.id)),
       };
-      break;
-    default:
-      return state;
   }
-  return { ...state, [ev.deck]: out };
 }
 
 /** Progress for the header: "3 of 10" and a 0..1 bar. */
@@ -137,26 +123,41 @@ export function excludeIds(d: DeckState, pendingItemIds: string[]): string[] {
   return [...new Set([...d.cards.map((c) => c.id), ...(d.next ?? []).map((c) => c.id), ...d.shown, ...pendingItemIds])];
 }
 
-/** Restore persisted state, tolerating old or partial shapes. */
-export function reviveDecks(raw: string | null): DecksState {
-  const base = initialDecks();
+/** Restore persisted state, tolerating old or partial shapes (and the old two-deck cache). */
+export function reviveDeck(raw: string | null): DeckState {
+  const base = emptyDeck();
   if (!raw) return base;
   try {
-    const parsed = JSON.parse(raw) as Partial<DecksState>;
-    for (const key of ['main', 'music'] as DeckKey[]) {
-      const p = parsed[key];
-      if (p && Array.isArray(p.cards)) {
-        base[key] = {
-          ...emptyDeck(),
-          ...p,
-          stats: { ...emptyDeck().stats, ...(p.stats ?? {}) },
-          shown: Array.isArray(p.shown) ? p.shown : [],
-          next: Array.isArray(p.next) ? p.next : null,
-        };
-      }
+    const parsed = JSON.parse(raw) as Partial<DeckState> & { main?: Partial<DeckState> };
+    const p = Array.isArray(parsed.cards) ? parsed : parsed.main;
+    if (p && Array.isArray(p.cards)) {
+      return {
+        ...base,
+        ...p,
+        stats: { ...base.stats, ...(p.stats ?? {}) },
+        shown: Array.isArray(p.shown) ? p.shown : [],
+        next: Array.isArray(p.next) ? p.next : null,
+      };
     }
   } catch {
     // ignore corrupt cache
   }
   return base;
+}
+
+// ---- deck sources ----------------------------------------------------------
+
+export const ALL: DeckSource = { key: 'all', label: 'All saves' };
+export const WATCH_LATER: DeckSource = { key: 'wl', label: 'Watch Later' };
+export const ALL_PLAYLISTS: DeckSource = { key: 'playlists', label: 'All my playlists' };
+export const NOT_FOR_LEARNING: DeckSource = { key: 'nl', label: 'Not for learning' };
+
+/** The fixed part of the source picker. nl is the number of music and entertainment videos waiting. */
+export function sourceList(nl: number | null): { source: DeckSource; text: string }[] {
+  return [
+    { source: ALL, text: ALL.label },
+    { source: WATCH_LATER, text: WATCH_LATER.label },
+    { source: ALL_PLAYLISTS, text: ALL_PLAYLISTS.label },
+    { source: NOT_FOR_LEARNING, text: nl === null ? NOT_FOR_LEARNING.label : `${NOT_FOR_LEARNING.label} (${nl.toLocaleString()})` },
+  ];
 }

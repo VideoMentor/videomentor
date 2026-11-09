@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deckReducer, excludeIds, initialDecks, progress, reviveDecks } from './deck';
+import { deckReducer, excludeIds, initialDeck, progress, reviveDeck, sourceList } from './deck';
 import { deckUrl, libraryUrl } from './api';
 import { momentUrl, normalizeAnalysis, parseSeconds } from './format';
 import type { Card } from './types';
@@ -28,58 +28,76 @@ const card = (id: string): Card => ({
 
 describe('deckReducer', () => {
   it('tracks progress through a 10-card round', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: 'abcdefghij'.split('').map(card) });
-    expect(progress(s.main)).toEqual({ position: 1, total: 10, fraction: 0 });
-    s = deckReducer(s, { type: 'removed', deck: 'main', ids: ['yt:a'], action: 'keep' });
-    s = deckReducer(s, { type: 'removed', deck: 'main', ids: ['yt:b'], action: 'archive' });
-    expect(progress(s.main)).toEqual({ position: 3, total: 10, fraction: 0.2 });
-    expect(s.main.stats).toEqual({ keep: 1, archive: 1, prioritize: 0 });
+    let s = deckReducer(initialDeck(), { type: 'loaded', cards: 'abcdefghij'.split('').map(card) });
+    expect(progress(s)).toEqual({ position: 1, total: 10, fraction: 0 });
+    s = deckReducer(s, { type: 'removed', ids: ['yt:a'], action: 'keep' });
+    s = deckReducer(s, { type: 'removed', ids: ['yt:b'], action: 'archive' });
+    expect(progress(s)).toEqual({ position: 3, total: 10, fraction: 0.2 });
+    expect(s.stats).toEqual({ keep: 1, archive: 1, prioritize: 0 });
   });
 
   it('restores an undone card to the front and rolls back the tally', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: [card('a'), card('b')] });
-    s = deckReducer(s, { type: 'removed', deck: 'main', ids: ['yt:a'], action: 'keep' });
-    s = deckReducer(s, { type: 'restored', deck: 'main', cards: [card('a')], action: 'keep' });
-    expect(s.main.cards.map((c) => c.id)).toEqual(['yt:a', 'yt:b']);
-    expect(s.main.decided).toBe(0);
-    expect(s.main.stats.keep).toBe(0);
+    let s = deckReducer(initialDeck(), { type: 'loaded', cards: [card('a'), card('b')] });
+    s = deckReducer(s, { type: 'removed', ids: ['yt:a'], action: 'keep' });
+    s = deckReducer(s, { type: 'restored', cards: [card('a')], action: 'keep' });
+    expect(s.cards.map((c) => c.id)).toEqual(['yt:a', 'yt:b']);
+    expect(s.decided).toBe(0);
+    expect(s.stats.keep).toBe(0);
   });
 
   it('puts a group at the front without duplicates (one by one)', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: [card('a'), card('b'), card('c')] });
-    s = deckReducer(s, { type: 'front', deck: 'main', cards: [card('a'), card('x'), card('c')] });
-    expect(s.main.cards.map((c) => c.id)).toEqual(['yt:a', 'yt:x', 'yt:c', 'yt:b']);
+    let s = deckReducer(initialDeck(), { type: 'loaded', cards: [card('a'), card('b'), card('c')] });
+    s = deckReducer(s, { type: 'front', cards: [card('a'), card('x'), card('c')] });
+    expect(s.cards.map((c) => c.id)).toEqual(['yt:a', 'yt:x', 'yt:c', 'yt:b']);
   });
 
   it('advances to the prefetched round, dropping anything decided meanwhile', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'music', cards: [card('a')] });
-    s = deckReducer(s, { type: 'prefetched', deck: 'music', cards: [card('n1'), card('n2')] });
-    s = deckReducer(s, { type: 'removed', deck: 'music', ids: ['yt:a', 'yt:n1'], action: 'archive' });
-    expect(s.music.cards).toHaveLength(0);
-    s = deckReducer(s, { type: 'advance', deck: 'music' });
-    expect(s.music.cards.map((c) => c.id)).toEqual(['yt:n2']);
-    expect(s.music.decided).toBe(0);
-    expect(s.main.loaded).toBe(false); // other deck untouched
+    let s = deckReducer(initialDeck(), { type: 'loaded', cards: [card('a')] });
+    s = deckReducer(s, { type: 'prefetched', cards: [card('n1'), card('n2')] });
+    s = deckReducer(s, { type: 'removed', ids: ['yt:a', 'yt:n1'], action: 'archive' });
+    expect(s.cards).toHaveLength(0);
+    s = deckReducer(s, { type: 'advance' });
+    expect(s.cards.map((c) => c.id)).toEqual(['yt:n2']);
+    expect(s.decided).toBe(0);
   });
 
   it('excludes current, prefetched, shown and queued ids', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: [card('a'), card('b')] });
-    s = deckReducer(s, { type: 'removed', deck: 'main', ids: ['yt:a'], action: 'keep' });
-    expect(excludeIds(s.main, ['yt:q']).sort()).toEqual(['yt:a', 'yt:b', 'yt:q']);
+    let s = deckReducer(initialDeck(), { type: 'loaded', cards: [card('a'), card('b')] });
+    s = deckReducer(s, { type: 'removed', ids: ['yt:a'], action: 'keep' });
+    expect(excludeIds(s, ['yt:q']).sort()).toEqual(['yt:a', 'yt:b', 'yt:q']);
   });
 
   it('revives a cached deck and ignores junk', () => {
-    const s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: [card('a')] });
-    expect(reviveDecks(JSON.stringify(s)).main.cards[0].id).toBe('yt:a');
-    expect(reviveDecks('{not json').main.cards).toEqual([]);
-    expect(reviveDecks(null).music.loaded).toBe(false);
+    const s = deckReducer(initialDeck(), { type: 'loaded', cards: [card('a')] });
+    expect(reviveDeck(JSON.stringify(s)).cards[0].id).toBe('yt:a');
+    expect(reviveDeck('{not json').cards).toEqual([]);
+    expect(reviveDeck(null).loaded).toBe(false);
+    // The old two-deck cache: only the main deck carries over.
+    const old = { main: s, music: deckReducer(initialDeck(), { type: 'loaded', cards: [card('m')] }) };
+    expect(reviveDeck(JSON.stringify(old)).cards.map((c) => c.id)).toEqual(['yt:a']);
+  });
+});
+
+describe('source list', () => {
+  it('offers Not for learning with its count, and no Music', () => {
+    const list = sourceList(462);
+    expect(list.map((o) => o.source.key)).toEqual(['all', 'wl', 'playlists', 'nl']);
+    expect(list.find((o) => o.source.key === 'nl')?.text).toBe('Not for learning (462)');
+    expect(list.some((o) => /music/i.test(o.text) || /music/i.test(o.source.label))).toBe(false);
+  });
+
+  it('shows Not for learning without a count until it is known', () => {
+    expect(sourceList(null).find((o) => o.source.key === 'nl')?.text).toBe('Not for learning');
   });
 });
 
 describe('url helpers', () => {
   it('builds the deck URL with a deduped exclude list', () => {
-    expect(deckUrl('music', 10, ['yt:a', 'yt:b', 'yt:a'])).toBe('/api/deck?deck=music&n=10&exclude=yt%3Aa%2Cyt%3Ab');
-    expect(deckUrl('main', 10, [])).toBe('/api/deck?deck=main&n=10');
+    expect(deckUrl(10, ['yt:a', 'yt:b', 'yt:a'])).toBe('/api/deck?deck=main&n=10&exclude=yt%3Aa%2Cyt%3Ab');
+    expect(deckUrl(10, [])).toBe('/api/deck?deck=main&n=10');
+  });
+  it('asks for the Not for learning source', () => {
+    expect(deckUrl(10, [], 'nl')).toBe('/api/deck?deck=main&n=10&source=nl');
   });
   it('builds the library URL', () => {
     expect(libraryUrl('  mcp auth ')).toBe('/api/library?status=kept&q=mcp+auth');
@@ -106,15 +124,5 @@ describe('analysis rendering helpers', () => {
     expect(a?.moments).toEqual([{ seconds: 65, label: 'x' }]);
     expect(normalizeAnalysis(null)).toBeNull();
     expect(normalizeAnalysis({ key_points: ['a', 3, ''] })?.key_points).toEqual(['a']);
-  });
-});
-
-describe('reset', () => {
-  it('clears both decks when the source changes', () => {
-    let s = deckReducer(initialDecks(), { type: 'loaded', deck: 'main', cards: [card('a')] });
-    s = deckReducer(s, { type: 'loaded', deck: 'music', cards: [card('b')] });
-    s = deckReducer(s, { type: 'reset' });
-    expect(s.main.cards).toEqual([]);
-    expect(s.music.loaded).toBe(false);
   });
 });

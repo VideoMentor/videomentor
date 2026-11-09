@@ -5,9 +5,9 @@ import type {
   AiChoice,
   AiStatus,
   Card,
+  NotForLearning,
   ChannelSummary,
   DecisionPayload,
-  DeckKey,
   DeckOrder,
   GroupAction,
   Playlist,
@@ -168,8 +168,8 @@ export async function request<T>(path: string, init: { method?: string; body?: u
 
 // ---- URL builders (pure, tested) -----------------------------------------
 
-export function deckUrl(deck: DeckKey, n: number, exclude: string[], source = 'all', order?: DeckOrder): string {
-  const params = new URLSearchParams({ deck, n: String(n) });
+export function deckUrl(n: number, exclude: string[], source = 'all', order?: DeckOrder): string {
+  const params = new URLSearchParams({ deck: 'main', n: String(n) });
   if (source && source !== 'all') params.set('source', source);
   if (order && order.sort !== 'default') {
     params.set('sort', order.sort);
@@ -206,8 +206,8 @@ export function itemUrl(id: string): string {
 export const api = {
   status: () => request<StatusResponse>('/api/status'),
 
-  deck: (deck: DeckKey, n: number, exclude: string[], source = 'all', order?: DeckOrder) =>
-    request<{ cards: Card[] }>(deckUrl(deck, n, exclude, source, order)).then((r) => r?.cards ?? []),
+  deck: (n: number, exclude: string[], source = 'all', order?: DeckOrder) =>
+    request<{ cards: Card[] }>(deckUrl(n, exclude, source, order)).then((r) => r?.cards ?? []),
 
   playlists: (signal?: AbortSignal) =>
     request<{ playlists: Playlist[]; youtube_api: YouTubeApiState }>('/api/playlists', { signal }),
@@ -285,6 +285,14 @@ export const api = {
 
   decideBatch: (decisions: DecisionPayload[]) =>
     request<{ results: unknown[] }>('/api/decisions/batch', { body: { decisions } }).then((r) => r?.results ?? []),
+
+  undoBatch: (batch: string) =>
+    request<{ undone: (string | number)[]; items: Card[] }>('/api/undo-batch', { body: { batch } }),
+
+  notForLearning: (signal?: AbortSignal) => request<NotForLearning>('/api/not-for-learning', { signal }),
+
+  archiveNotForLearning: (olderThanDays: number) =>
+    request<{ archived: number; batch: string }>('/api/not-for-learning/archive', { body: { older_than_days: olderThanDays } }),
 
   undo: (decisionId?: string | number) =>
     request<{ undone: (string | number)[]; items: Card[] }>('/api/undo', {

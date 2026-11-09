@@ -3,7 +3,7 @@ import { BehindCard, SwipeCard, type SwipeCardHandle } from '../components/Swipe
 import { GroupSheet } from '../components/GroupSheet';
 import { progress } from '../lib/deck';
 import type { SwipeAction } from '../lib/gesture';
-import type { Card, DeckKey } from '../lib/types';
+import type { Card } from '../lib/types';
 import type { Triage } from '../state/useTriage';
 import { api } from '../lib/api';
 import { SourceSheet } from '../components/SourceSheet';
@@ -25,7 +25,7 @@ export function DeckScreen({ t, online, queued }: Props) {
   const top = useRef<SwipeCardHandle>(null);
   const [picking, setPicking] = useState(false);
   const wide = useMediaQuery(WIDE);
-  const { state, deck } = t;
+  const { state } = t;
   const card = state.cards[0];
   const behind = state.cards[1];
   const p = progress(state);
@@ -64,7 +64,7 @@ export function DeckScreen({ t, online, queued }: Props) {
     <div className={wide ? 'deck-wide' : 'deck-narrow'}>
     <section className="deck-screen" aria-label="Deck">
       <header className="topbar">
-        <Segmented value={deck} onChange={t.setDeck} />
+        <b className="topbar-title">Deck</b>
         <div className="topbar-right">
           {!online && (
             <span className="pill offline" title="Offline. Swipes are saved and sent later.">
@@ -148,18 +148,6 @@ export function DeckScreen({ t, online, queued }: Props) {
   );
 }
 
-function Segmented({ value, onChange }: { value: DeckKey; onChange(d: DeckKey): void }) {
-  return (
-    <div className="segmented" role="tablist" aria-label="Which deck">
-      {(['main', 'music'] as DeckKey[]).map((k) => (
-        <button key={k} role="tab" aria-selected={value === k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>
-          {k === 'main' ? 'Main' : 'Music'}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function EmptyDeck({ t, online }: { t: Triage; online: boolean }) {
   const { state, loading, error } = t;
   const cleared = !loading && state.decided > 0;
@@ -220,7 +208,7 @@ function EmptyDeck({ t, online }: { t: Triage; online: boolean }) {
       <p className="note">
         {t.source.key === 'all'
           ? 'New videos show up after the next sync.'
-          : `Nothing in “${t.source.label}” for the ${t.deck === 'music' ? 'Music' : 'Main'} deck. Try the other deck, or videos may still be getting tagged.`}
+          : `Nothing in “${t.source.label}” right now. Videos may still be getting tagged.`}
         {t.order.start ? ' Nothing more past the start date in this direction.' : ''}
       </p>
       <button className="secondary" onClick={() => void t.refresh()} disabled={!online}>
@@ -268,7 +256,7 @@ function PreparingChannel({ t, online }: { t: Triage; online: boolean }) {
   return (
     <div className="empty">
       <h2>Nothing left to triage</h2>
-      <p className="note">{`Nothing left from “${t.source.label}” in the ${t.deck === 'music' ? 'Music' : 'Main'} deck. Try the other deck, or pull more from the channel.`}</p>
+      <p className="note">{`Nothing left from “${t.source.label}”. Pull more from the channel to keep going.`}</p>
       <button className="secondary" onClick={() => void t.refresh()} disabled={!online}>
         Check again
       </button>

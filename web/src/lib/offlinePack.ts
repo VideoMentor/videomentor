@@ -12,7 +12,7 @@ export interface OfflinePack {
   actions: { all: ActionItem[]; open: ActionItem[]; done: ActionItem[]; skipped: ActionItem[]; counts: ActionCounts };
   training: { modules: TrainingModule[]; details: Record<string, TrainingModule> };
   items: Record<string, ItemDetail>;
-  decks: { main: Card[]; music: Card[] };
+  decks: { main: Card[] };
 }
 
 export interface PackSummary {
@@ -23,7 +23,7 @@ export interface PackSummary {
   at: string;
 }
 
-export type PackDecks = { source: string; decks: { main: Card[]; music: Card[] } };
+export type PackDecks = { source: string; decks: { main: Card[] } };
 
 export const PACK_SIZES = [50, 100, 200] as const;
 const SIZE_KEY = 'vm.offlinePack.v1';
@@ -54,7 +54,7 @@ export async function savePack(store: OfflineStore, p: OfflinePack, source: stri
   const decks: PackDecks = { source, decks: p.decks };
   writes.push(store.set('pack:decks', decks));
   const summary: PackSummary = {
-    cards: p.decks.main.length + p.decks.music.length,
+    cards: p.decks.main.length,
     items: Object.keys(p.items).length,
     modules: p.training.modules.length,
     actions: p.actions.all.length,

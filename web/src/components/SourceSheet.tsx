@@ -1,9 +1,10 @@
 // Pick which saves the deck draws from.
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import type { DeckSource, Playlist, PulledChannel } from '../lib/types';
+import type { DeckSource, NotForLearning, Playlist, PulledChannel } from '../lib/types';
 import { navigate } from '../state/nav';
-import { ALL, ALL_PLAYLISTS, DEFAULT_ORDER, WATCH_LATER, playlistSource, setOrder, setSource, useDeckOrder, useDeckSource } from '../state/source';
+import { sourceList } from '../lib/deck';
+import { DEFAULT_ORDER, playlistSource, setOrder, setSource, useDeckOrder, useDeckSource } from '../state/source';
 import type { DeckOrder } from '../lib/types';
 
 export function SourceSheet({ onClose }: { onClose(): void }) {
@@ -13,6 +14,7 @@ export function SourceSheet({ onClose }: { onClose(): void }) {
   const [lists, setLists] = useState<Playlist[] | null>(null);
   const [error, setError] = useState(false);
   const [pulled, setPulled] = useState<PulledChannel[]>([]);
+  const [nl, setNl] = useState<NotForLearning | null>(null);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -26,6 +28,10 @@ export function SourceSheet({ onClose }: { onClose(): void }) {
       .pulledChannels(ctl.signal)
       .then((r) => setPulled(r.channels))
       .catch(() => {});
+    api
+      .notForLearning(ctl.signal)
+      .then(setNl)
+      .catch(() => {});
     return () => ctl.abort();
   }, []);
 
@@ -34,10 +40,10 @@ export function SourceSheet({ onClose }: { onClose(): void }) {
     onClose();
   };
 
-  const option = (s: DeckSource, detail?: string) => (
+  const option = (s: DeckSource, detail?: string, text = s.label) => (
     <li key={s.key}>
       <button className={`source-opt${current.key === s.key ? ' on' : ''}`} onClick={() => pick(s)}>
-        <span>{s.label}</span>
+        <span>{text}</span>
         {detail && <small>{detail}</small>}
         {current.key === s.key && <span className="check" aria-label="selected">✓</span>}
       </button>
@@ -56,9 +62,17 @@ export function SourceSheet({ onClose }: { onClose(): void }) {
         </div>
         <div className="info-body scroll">
           <ul className="source-list">
-            {option(ALL, 'Watch Later, bookmarks and playlists that are on')}
-            {option(WATCH_LATER)}
-            {option(ALL_PLAYLISTS, lists ? `${lists.length} on, newest saves first` : undefined)}
+            {sourceList(nl ? nl.inbox : null).map(({ source, text }) =>
+              option(
+                source,
+                {
+                  all: 'Watch Later, bookmarks and playlists that are on',
+                  playlists: lists ? `${lists.length} on, newest saves first` : undefined,
+                  nl: 'Music and entertainment',
+                }[source.key],
+                text,
+              ),
+            )}
           </ul>
           {lists && lists.length > 0 && (
             <>

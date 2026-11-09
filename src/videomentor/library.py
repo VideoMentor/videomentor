@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from . import db, tagging
 from .sources.youtube import thumbnail_url, watch_url
@@ -370,6 +371,44 @@ def undo(conn: sqlite3.Connection, decision_id: int | None = None) -> dict:
     return {"undone": [r["id"] for r in rows], "items": items}
 
 
+def undo_batch(conn: sqlite3.Connection, batch: str) -> dict:
+    """Revert every decision still standing in one batch (nothing if it is gone or undone)."""
+    row = conn.execute(
+        "SELECT id FROM decisions WHERE batch = ? AND undone = 0 AND action != 'undo'"
+        " ORDER BY id LIMIT 1",
+        (batch,),
+    ).fetchone()
+    if row is None:
+        return {"undone": [], "items": []}
+    return undo(conn, row["id"])
+
+
+NL_SCOPE = "status = 'inbox' AND category IN ('" + "','".join(MUSIC_CATEGORIES) + "')"
+
+
+def not_for_learning_counts(conn: sqlite3.Connection, older_than_days: int = 30) -> dict:
+    """Inbox music and entertainment, and how many of those were saved long enough ago."""
+    cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat(timespec="seconds")
+    return {
+        "inbox": conn.execute(f"SELECT COUNT(*) FROM items WHERE {NL_SCOPE}").fetchone()[0],
+        "older": conn.execute(
+            f"SELECT COUNT(*) FROM items WHERE {NL_SCOPE} AND added_at < ?", (cutoff,)
+        ).fetchone()[0],
+    }
+
+
+def archive_not_for_learning(conn: sqlite3.Connection, older_than_days: int = 30) -> dict:
+    """Archive old inbox music and entertainment as one batch, so one Undo brings them back."""
+    cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat(timespec="seconds")
+    rows = conn.execute(
+        f"SELECT * FROM items WHERE {NL_SCOPE} AND added_at < ? ORDER BY added_at", (cutoff,)
+    ).fetchall()
+    batch = f"nl-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    for r in rows:
+        _record(conn, db.row_to_dict(r), "archive", batch=batch, reason="not for learning")
+    return {"archived": len(rows), "batch": batch}
+
+
 def pulled_only_sql(col: str = "id") -> str:
     """SQL test for videos that came only from a channel pull (no save, playlist or bookmark).
 
@@ -501,17 +540,20 @@ def deck(
     hasn't reached, showing title, channel and thumbnail without a why-line.
 
     source: "all", "wl" (Watch Later), "playlists" (every enabled playlist, newest
-    save first) or "pl:<id>" (one playlist: newest save first when the API dates are
+    save first), "nl" (Not for learning: music and entertainment from any source), or "pl:<id>" (one playlist: newest save first when the API dates are
     known, else its stored order).
     """
-    categories = MUSIC_CATEGORIES if which == "music" else MAIN_CATEGORIES
+    # "nl" (Not for learning) is a source of the main deck; the "music" deck is the same
+    # thing for older clients.
+    music = which == "music" or source == "nl"
+    categories = MUSIC_CATEGORIES if music else MAIN_CATEGORIES
     marks = ",".join("?" * len(categories))
     excl = ",".join("?" * len(exclude)) or "''"
     # Items whose prep failed still show (without a why-line) so a broken LLM never
     # empties the deck; they have no category and fall into the main deck.
     category_clause = (
         f"items.category IN ({marks})"
-        if which == "music"
+        if music
         else f"(items.category IN ({marks}) OR items.category IS NULL)"
     )
     join, order, extra = "", "items.added_at DESC, items.wl_position ASC", ()
@@ -523,6 +565,8 @@ def deck(
         join = " JOIN item_sources cs ON cs.item_id = items.id AND cs.source = 'channel:' || ?"
         extra = (source[3:],)
         order = f"{POSTED_KEY} IS NULL, {POSTED_KEY} DESC"
+        saves_only = ""
+    elif source == "nl":
         saves_only = ""
     elif source == "wl":
         join = " JOIN item_sources s ON s.item_id = items.id AND s.source = 'youtube:watch_later'"

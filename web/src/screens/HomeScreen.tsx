@@ -33,7 +33,7 @@ export function HomeScreen({ status, readyCount, online }: { status: StatusRespo
   const [start, setStart] = useState<StartChoice>(readStartChoice);
   const last = readJSON<LastLesson | null>(LAST_LESSON_KEY, null);
   const c = status?.counts ?? {};
-  const toTriage = (c.inbox ?? 0) + (c.music_inbox ?? 0);
+  const toTriage = c.inbox ?? 0;
   const sync = status?.last_sync as { finished_at?: string; started_at?: string } | null | undefined;
   const lost = loginLost(syncErrors(status?.last_sync));
 

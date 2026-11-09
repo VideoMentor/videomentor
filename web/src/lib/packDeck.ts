@@ -13,8 +13,7 @@ export function takeFromPack(cards: Card[], n: number, skip: Set<string>): { rou
 export async function removeFromPack(store: OfflineStore, id: string): Promise<void> {
   const saved = (await store.get('pack:decks')) as PackDecks | undefined;
   if (!saved) return;
-  const strip = (cs: Card[] = []) => cs.filter((c) => c.id !== id);
-  const decks = { main: strip(saved.decks.main), music: strip(saved.decks.music) };
-  if (decks.main.length === (saved.decks.main ?? []).length && decks.music.length === (saved.decks.music ?? []).length) return;
-  await store.set('pack:decks', { ...saved, decks });
+  const main = (saved.decks.main ?? []).filter((c) => c.id !== id);
+  if (main.length === (saved.decks.main ?? []).length) return;
+  await store.set('pack:decks', { ...saved, decks: { main } });
 }

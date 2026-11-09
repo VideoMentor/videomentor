@@ -157,6 +157,9 @@ code {
   gap: 8px;
   padding: 10px 16px 8px;
 }
+.topbar-title {
+  font-size: 15px;
+}
 .topbar-right {
   display: flex;
   align-items: center;
