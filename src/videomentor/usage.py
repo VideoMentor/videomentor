@@ -1,8 +1,9 @@
 """LLM usage: records each ``claude -p`` call in ``llm_calls`` and sums it up.
 
 Only numbers and a prompt hash are kept, never prompt text or responses, and rows
-older than ``KEEP_DAYS`` are pruned. ``cost_usd`` is what the API would charge for the
-same tokens; on a Pro or Max plan it isn't billed.
+older than ``KEEP_DAYS`` are pruned. ``cost_usd`` is what the API charges for the
+tokens: billed to your Anthropic account for API-key calls, and only an equivalent for
+Claude Code calls, which count toward your Claude plan's usage limits instead.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from . import db, llm
+from . import ai, db, llm
 
 KEEP_DAYS = 180
 PRUNE_EVERY_S = 24 * 3600
@@ -34,7 +35,13 @@ COLUMNS = (
     "prompt_chars",
     "backend",
 )
-NOT_BILLED = "Cost is API-equivalent: what the API would charge, not billed on Pro or Max plans."
+COST_NOTE = (
+    "API key calls are billed to your Anthropic account at this cost. Claude Code calls"
+    " show the API-equivalent cost; they count toward your Claude plan's usage limits."
+)
+# Rows from before the backend column ran through Claude Code.
+BACKEND = "COALESCE(backend, 'claude_code')"
+BACKEND_LABELS = {"api": "API key (billed)", "claude_code": "Claude Code (plan)"}
 
 _last_prune = 0.0
 
@@ -69,6 +76,7 @@ def install(path: Path | None = None) -> None:
     with db.session(path) as conn:
         prune(conn)
     _last_prune = time.monotonic()
+    ai.set_usage_path(path)  # the cap check reads the same library the rows go to
     llm.set_recorder(lambda row: record(row, path))
 
 
@@ -97,14 +105,24 @@ def by_step(conn: sqlite3.Connection, since: str | None = None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def by_backend(conn: sqlite3.Connection) -> list[dict]:
+    """All-time totals for API-key calls (billed) and Claude Code calls (plan limits)."""
+    rows = conn.execute(
+        f"SELECT {BACKEND} AS backend, {SUMS} FROM llm_calls GROUP BY {BACKEND} ORDER BY backend"
+    )
+    return [dict(r) for r in rows]
+
+
 def summary(conn: sqlite3.Connection) -> dict:
-    """All-time and last-7-days totals, and all-time totals by step."""
+    """All-time and last-7-days totals, and all-time totals by step and by backend."""
     week = _ago(7)
     return {
         "since": conn.execute("SELECT MIN(at) FROM llm_calls").fetchone()[0],
         "total": totals(conn),
         "last_7d": totals(conn, week),
         "by_step": by_step(conn),
+        "by_backend": by_backend(conn),
+        "note": COST_NOTE,
     }
 
 
@@ -112,7 +130,7 @@ def report(conn: sqlite3.Connection) -> str:
     """Plain-text tables for `vm stats`."""
     since = conn.execute("SELECT MIN(at) FROM llm_calls").fetchone()[0]
     if not since:
-        return "No LLM calls recorded yet.\n" + NOT_BILLED
+        return "No LLM calls recorded yet.\n" + COST_NOTE
     head = f"{'step':<12}{'calls':>7}{'failed':>8}{'input':>12}{'output':>11}"
     head += f"{'cache read':>13}{'cache write':>13}{'cost $':>10}"
     lines = []
@@ -125,5 +143,9 @@ def report(conn: sqlite3.Connection) -> str:
                 f"{r['output_tokens']:>11,}{r['cache_read_tokens']:>13,}"
                 f"{r['cache_creation_tokens']:>13,}{r['cost_usd']:>10.2f}"
             )
-    lines += ["", NOT_BILLED]
+    lines += ["", "By backend (all time)", f"{'backend':<22}{'calls':>7}{'cost $':>10}"]
+    for r in by_backend(conn):
+        label = BACKEND_LABELS.get(r["backend"], r["backend"])
+        lines.append(f"{label:<22}{r['calls']:>7,}{r['cost_usd']:>10.2f}")
+    lines += ["", COST_NOTE]
     return "\n".join(lines).lstrip("\n")

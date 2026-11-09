@@ -9,7 +9,9 @@ import type { Tab } from '../components/TabBar';
 import { navigate, openTag } from '../state/nav';
 import { backLabel } from './TagsScreen';
 
-export const COST_NOTE = "API-equivalent cost. Not billed on Pro or Max plans; it counts toward your plan's usage limits.";
+export const COST_NOTE =
+  "API key calls are billed to your Anthropic account at this cost. Claude Code calls show the API-equivalent cost; they count toward your Claude plan's usage limits.";
+const BACKEND_LABELS: Record<string, string> = { api: 'API key (billed)', claude_code: 'Claude Code (plan)' };
 
 const num = (n: number | null | undefined) => (n ?? 0).toLocaleString();
 const minutes = (m: number | null | undefined) => formatMinutes((m ?? 0) * 60);
@@ -279,6 +281,9 @@ function Usage({ data }: { data: Insights }) {
           <dl className="counts ins-usage">
             <UsageCell label="All time" u={u.total} />
             <UsageCell label="Last 7 days" u={u.last_7d} />
+            {(u.by_backend ?? []).map((b) => (
+              <UsageCell key={b.backend} label={BACKEND_LABELS[b.backend] ?? b.backend} u={b} />
+            ))}
           </dl>
           {steps.length > 0 && (
             <table className="ins-table">

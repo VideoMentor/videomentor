@@ -132,3 +132,29 @@ def test_nl_scope_is_saves_only_and_available(conn):
     assert status(conn, pulled) == "inbox"
     assert status(conn, gone) == "inbox"
     assert status(conn, ids["music_old"]) == "archived"
+
+
+def test_bulk_archive_is_not_your_triage(conn):
+    """Archiving Not for learning in bulk doesn't count as videos you triaged."""
+    from videomentor import insights, progress
+
+    ids = seed(conn)
+    library.decide(conn, ids["learn_old"], "archive", "a1")
+    conn.execute("UPDATE items SET signal = 2, duration_s = 3600")
+    conn.commit()
+    before_p = progress.summary(conn)
+    before_i = insights.insights(conn)
+    assert library.archive_not_for_learning(conn)["archived"] == 2
+    conn.commit()
+    after_p = progress.summary(conn)
+    after_i = insights.insights(conn)
+    assert after_p == before_p
+    for key in ("decisions_7d", "undo_rate"):
+        assert after_i["funnel"][key] == before_i["funnel"][key]
+    assert after_i["signal_keep"] == before_i["signal_keep"]
+    assert after_i["signal_keep_clean"] == before_i["signal_keep_clean"]
+    decided = {
+        r["id"]: r["decided_at"]
+        for r in conn.execute(f"SELECT id, {library.DECIDED_SQL} AS decided_at FROM items")
+    }
+    assert decided[ids["music_old"]] is None and decided[ids["ent_old"]] is None

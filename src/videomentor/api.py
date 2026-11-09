@@ -29,6 +29,7 @@ from . import (
     insights,
     library,
     llm,
+    llm_api,
     markdown,
     playlists,
     progress,
@@ -155,6 +156,8 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
     settings = settings or load_settings()
     worker = Worker(settings) if run_worker else None
     ai.configure(settings)  # llm.structured reads the backend choice from these
+    # Keep the API key in this process only: no child (claude, yt-dlp, ffmpeg) inherits it.
+    llm_api.adopt_env_key()
     lockout = auth.Lockout()
 
     @asynccontextmanager

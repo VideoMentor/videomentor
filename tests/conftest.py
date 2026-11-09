@@ -27,17 +27,22 @@ def no_network(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_anthropic_api(monkeypatch):
-    """Tests never reach the Anthropic API: no key, and no client left over from a test."""
-    from videomentor import llm_api
+    """Tests never reach the Anthropic API: no key (in the environment or stored), and no
+    client or usage path left over from a test."""
+    from videomentor import ai, llm_api
 
     def blocked(*a, **k):
         raise RuntimeError("Anthropic API disabled in tests")
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(llm_api.anthropic, "Anthropic", blocked)
+    llm_api.set_key(None)
     llm_api.set_client(None)
+    ai.set_usage_path(None)
     yield
+    llm_api.set_key(None)
     llm_api.set_client(None)
+    ai.set_usage_path(None)
 
 
 @pytest.fixture(autouse=True)

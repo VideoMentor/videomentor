@@ -33,14 +33,16 @@ AI writes card summaries, tags, scores, notes and training. You choose how it ru
 | Option | Setup | Cost |
 |---|---|---|
 | **Claude Code** | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and sign in. VideoMentor calls `claude -p`. | Counts toward your Claude plan limits. |
-| **Anthropic API key** | Set `ANTHROPIC_API_KEY` in the environment that runs `vm serve`, or paste the key in the Mac app's AI Settings (it goes in your Keychain). | Pay per use on your Anthropic account. VideoMentor records the cost of each call. |
+| **Anthropic API key** | Paste the key in the Mac app's AI Settings (recommended: it goes in your Keychain), or set `ANTHROPIC_API_KEY` in the environment that runs `vm serve`. | Billed per use to your Anthropic account. VideoMentor records the cost of each call. |
 | **None** | Nothing to set up. | Free. |
 
-A **monthly cap** applies to the API key only. It defaults to $5. When the month's recorded cost reaches it, AI steps pause and Status says so. Change it in AI Settings in the Mac app. Claude Code uses your plan limits instead, so the cap does not apply.
+**Set the choice** (Auto, Claude Code, API key or Off) in Status > AI, or in the Mac app's AI Settings. Auto is the default: it uses Claude Code when it's installed, and the API key only when Claude Code isn't.
 
-When both Claude Code and a key are available, VideoMentor uses Claude Code by default.
+A **monthly cap** applies to the API key only. It defaults to $5. VideoMentor checks it before every API call, and when the month's recorded cost reaches it, AI steps pause and Status says so. Change it in Status > AI or in the Mac app's AI Settings. Claude Code uses your plan limits instead, so the cap does not apply.
 
-**Set the choice** (Auto, Claude Code, API key or Off) in Status > AI, or in the Mac app's AI Settings. In Auto, Claude Code wins when both exist. To use an API key, set `ANTHROPIC_API_KEY` for headless use, or paste it in the Mac app.
+**Claude Code never uses the API key.** Claude Code would bill a key it finds in its environment instead of your plan, so VideoMentor takes the key out of its environment at startup and keeps it to itself: Claude Code, yt-dlp, ffmpeg and Chrome never see it.
+
+**Keep the key out of files.** `vm install-service` doesn't pass `ANTHROPIC_API_KEY` on to the login service. Giving that service a key means adding it to the launchd plist, which stores it in plain text on disk. Use the Mac app's AI Settings instead, which keeps it in your Keychain.
 
 **Privacy:** with an API key, prompts go to Anthropic's API under your own account. VideoMentor never stores the key: the Mac app keeps it in your Keychain and passes it to the engine when it starts.
 

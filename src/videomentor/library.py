@@ -574,8 +574,9 @@ def deck(
     hasn't reached, showing title, channel and thumbnail without a why-line.
 
     source: "all", "wl" (Watch Later), "playlists" (every enabled playlist, newest
-    save first), "nl" (Not for learning: music and entertainment from any source), or "pl:<id>" (one playlist: newest save first when the API dates are
-    known, else its stored order).
+    save first), "nl" (Not for learning: music and entertainment you saved, from any
+    source except channel pulls), or "pl:<id>" (one playlist: newest save first when the
+    API dates are known, else its stored order).
     """
     # "nl" (Not for learning) is a source of the main deck. It deals the same cards the
     # counts and the bulk archive use (nl_where). The "music" deck is the older way to ask
@@ -639,10 +640,14 @@ def deck(
     return [card(conn, db.row_to_dict(r)) for r in rows]
 
 
-# When you last decided on an item yourself (not undone, not the automatic archive).
+# Decision reasons that aren't your own triage: the automatic archive of unavailable
+# videos and the bulk archive of Not for learning. Counts and dates leave them out.
+NOT_MINE = "('unavailable', 'not for learning')"
+
+# When you last decided on an item yourself (not undone, not an automatic or bulk archive).
 DECIDED_SQL = (
     "(SELECT MAX(d.at) FROM decisions d WHERE d.item_id = items.id AND d.undone = 0"
-    " AND d.action != 'undo' AND COALESCE(d.reason, '') != 'unavailable')"
+    f" AND d.action != 'undo' AND COALESCE(d.reason, '') NOT IN {NOT_MINE})"
 )
 
 
@@ -712,10 +717,10 @@ def record_events(conn: sqlite3.Connection, events: list[dict]) -> int:
     return stored
 
 
-# Everything you did yourself: decisions (not undone, not automatic) plus touch events.
-TOUCHES_SQL = """
+# Everything you did yourself: decisions (not undone, not automatic or bulk) plus touch events.
+TOUCHES_SQL = f"""
     SELECT item_id, action, at FROM decisions
-     WHERE undone = 0 AND action != 'undo' AND COALESCE(reason, '') != 'unavailable'
+     WHERE undone = 0 AND action != 'undo' AND COALESCE(reason, '') NOT IN {NOT_MINE}
     UNION ALL
     SELECT item_id, kind AS action, at FROM events
 """

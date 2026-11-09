@@ -1,8 +1,9 @@
 """Structured LLM calls through the Anthropic API (the official ``anthropic`` SDK).
 
-The key comes only from ``ANTHROPIC_API_KEY`` in the environment. Error text is
-fixed wording plus a status code, never the SDK's own message, so the key can't
-reach an error, the usage row or the logs.
+The key comes only from ``ANTHROPIC_API_KEY``, which ``adopt_env_key`` moves out of
+the environment at startup so no child process (Claude Code, yt-dlp, ffmpeg, Chrome)
+can inherit it. Error text is fixed wording plus a status code, never the SDK's own
+message, so the key can't reach an error, the usage row or the logs.
 """
 
 from __future__ import annotations
@@ -38,7 +39,33 @@ PRICES = {
 CACHE_READ = 0.1
 CACHE_WRITE = 1.25
 
+ENV_KEY = "ANTHROPIC_API_KEY"
+
 _client: Any = None
+_key: str | None = None
+
+
+def set_key(key: str | None) -> None:
+    """Use this API key (None: no key). Drops a client built with a different key."""
+    global _key, _client
+    if (key or None) != _key:
+        _key = key or None
+        _client = None
+
+
+def key() -> str | None:
+    return _key
+
+
+def adopt_env_key() -> None:
+    """Take ``ANTHROPIC_API_KEY`` out of the environment and keep it here.
+
+    Called once at startup (the CLI and the app). Without it every subprocess would
+    inherit the key, and Claude Code would bill it instead of your plan.
+    """
+    value = os.environ.pop(ENV_KEY, None)
+    if value:
+        set_key(value)
 
 
 def set_client(client: Any) -> None:
@@ -48,17 +75,16 @@ def set_client(client: Any) -> None:
 
 
 def _get_client(row: dict) -> Any:
-    """The injected client, or a real one built from ``ANTHROPIC_API_KEY`` only.
+    """The injected client, or a real one built from the stored key only.
 
     The key is passed explicitly so the SDK never falls back to an auth token or a
     profile on disk.
     """
     global _client
     if _client is None:
-        key = os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
+        if not _key:
             raise _fail(row, "auth", "No Anthropic API key is set")
-        _client = anthropic.Anthropic(api_key=key, max_retries=1)
+        _client = anthropic.Anthropic(api_key=_key, max_retries=1)
     return _client
 
 

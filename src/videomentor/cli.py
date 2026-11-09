@@ -21,6 +21,8 @@ from . import (
     backup,
     db,
     library,
+    llm,
+    llm_api,
     markdown,
     playlists,
     prep,
@@ -55,42 +57,48 @@ def cmd_sync(args, settings) -> None:
 def cmd_prep(args, settings) -> None:
     with db.session() as conn:
         require_ai(conn, settings)
-        if args.retry_failed:
-            conn.execute(
-                "UPDATE items SET prep_status = 'pending', prep_attempts = 0"
-                " WHERE prep_status = 'failed'"
-            )
-            conn.execute("UPDATE items SET tag_status = 'pending' WHERE tag_status = 'failed'")
-            conn.execute(
-                "UPDATE items SET signal_status = 'pending' WHERE signal_status = 'failed'"
-            )
-            conn.commit()
-        total = 0
-        while batch := prep.pending(conn, settings.prep_batch_size):
-            total += prep.prep_batch(conn, batch, settings.prep_model)
-            print(f"prepped {total}", flush=True)
-            if args.limit and total >= args.limit:
-                break
-        print(f"prepped {total} items")
-        tagged = 0
-        while batch := tagging.pending(conn, settings.prep_batch_size):
-            tagged += tagging.tag_batch(conn, batch, settings.prep_model)
-            print(f"tagged {tagged}", flush=True)
-            if args.limit and tagged >= args.limit:
-                break
-        print(f"tagged {tagged} items")
-        scored = 0
-        while batch := scoring.pending(conn, settings.prep_batch_size):
-            scored += scoring.score_batch(
-                conn,
-                batch,
-                settings.prep_model,
-                scoring.rules(settings.signal_areas, settings.signal_guidance),
-            )
-            print(f"scored {scored}", flush=True)
-            if args.limit and scored >= args.limit:
-                break
-        print(f"scored {scored} items")
+        try:
+            _prep_all(conn, args, settings)
+        except llm.AIUnavailable as e:
+            # Switched off, or this month's cap reached partway: the rest stays pending.
+            sys.exit(str(e))
+
+
+def _prep_all(conn, args, settings) -> None:
+    if args.retry_failed:
+        conn.execute(
+            "UPDATE items SET prep_status = 'pending', prep_attempts = 0"
+            " WHERE prep_status = 'failed'"
+        )
+        conn.execute("UPDATE items SET tag_status = 'pending' WHERE tag_status = 'failed'")
+        conn.execute("UPDATE items SET signal_status = 'pending' WHERE signal_status = 'failed'")
+        conn.commit()
+    total = 0
+    while batch := prep.pending(conn, settings.prep_batch_size):
+        total += prep.prep_batch(conn, batch, settings.prep_model)
+        print(f"prepped {total}", flush=True)
+        if args.limit and total >= args.limit:
+            break
+    print(f"prepped {total} items")
+    tagged = 0
+    while batch := tagging.pending(conn, settings.prep_batch_size):
+        tagged += tagging.tag_batch(conn, batch, settings.prep_model)
+        print(f"tagged {tagged}", flush=True)
+        if args.limit and tagged >= args.limit:
+            break
+    print(f"tagged {tagged} items")
+    scored = 0
+    while batch := scoring.pending(conn, settings.prep_batch_size):
+        scored += scoring.score_batch(
+            conn,
+            batch,
+            settings.prep_model,
+            scoring.rules(settings.signal_areas, settings.signal_guidance),
+        )
+        print(f"scored {scored}", flush=True)
+        if args.limit and scored >= args.limit:
+            break
+    print(f"scored {scored} items")
 
 
 def cmd_analyze(args, settings) -> None:
@@ -119,16 +127,27 @@ def cmd_analyze(args, settings) -> None:
                 conn.execute(
                     "UPDATE items SET analysis_status = 'running' WHERE id = ?", (nxt["id"],)
                 )
-        for item in items:
+        for n, item in enumerate(items):
             print(f"analyzing {item['id']}: {item.get('title')}", flush=True)
-            result = analyze.analyze_item(
-                conn,
-                item,
-                chrome_profile=settings.watch_later_profile,
-                model=settings.analysis_model,
-                skills=settings.skill_map,
-                signal_rules=scoring.rules(settings.signal_areas, settings.signal_guidance),
-            )
+            try:
+                result = analyze.analyze_item(
+                    conn,
+                    item,
+                    chrome_profile=settings.watch_later_profile,
+                    model=settings.analysis_model,
+                    skills=settings.skill_map,
+                    signal_rules=scoring.rules(settings.signal_areas, settings.signal_guidance),
+                )
+            except llm.AIUnavailable as e:
+                # Off, or this month's cap reached partway: the rest go back in the queue.
+                for rest in items[n + 1 :]:
+                    conn.execute(
+                        "UPDATE items SET analysis_status = 'queued' WHERE id = ?"
+                        " AND analysis_status = 'running'",
+                        (rest["id"],),
+                    )
+                conn.commit()
+                sys.exit(str(e))
             print(f"  {result['transcript_source']}: {result['summary'][:160]}")
 
 
@@ -563,7 +582,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--list", action="store_true", help="list backups, newest first")
     p.set_defaults(fn=cmd_backup)
 
-    sub.add_parser("stats", help="LLM calls, tokens and API-equivalent cost by step").set_defaults(
+    sub.add_parser("stats", help="LLM calls, tokens and cost by step and backend").set_defaults(
         fn=cmd_stats
     )
 
@@ -636,6 +655,8 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     args = parser.parse_args(argv)
+    # Keep the API key in this process only: no child (claude, yt-dlp, ffmpeg) inherits it.
+    llm_api.adopt_env_key()
     # import-library fills an empty library folder; loading settings first would create
     # config.toml there, so that command runs without them.
     settings = None if getattr(args, "no_settings", False) else load_settings()

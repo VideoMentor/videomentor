@@ -422,6 +422,11 @@ export interface UsageByStep extends UsageTotals {
   step: string;
 }
 
+/** All-time totals per backend: "api" is billed, "claude_code" counts toward plan limits. */
+export interface UsageByBackend extends UsageTotals {
+  backend: string;
+}
+
 export interface Insights {
   skills: SkillReport[];
   funnel: {
@@ -437,7 +442,13 @@ export interface Insights {
   signal_keep_clean?: KeepRate[];
   sources: { source: string; label?: string | null; kept: number; archived: number; rate: number | null }[];
   latency: { queue_to_notes_h: number | null; save_to_notes_h: number | null };
-  usage: { since: string | null; total: UsageTotals; last_7d: UsageTotals; by_step: UsageByStep[] };
+  usage: {
+    since: string | null;
+    total: UsageTotals;
+    last_7d: UsageTotals;
+    by_step: UsageByStep[];
+    by_backend?: UsageByBackend[];
+  };
   inbox_by_tag: { tag: string; inbox: number; avg_signal: number | null }[];
 }
 

@@ -1,6 +1,6 @@
 """Structured LLM calls through the local ``claude -p`` CLI or the Anthropic API.
 
-The CLI runs on your Claude plan, so there's no API key. Calls are stripped down:
+The CLI runs on your Claude plan and never sees the API key. Calls are stripped down:
 no tools, no MCP servers, no settings or plugins, and no saved session. ``ai.backend``
 picks the CLI, the API backend (``llm_api``) or neither, from the ``ai_backend`` setting.
 """
@@ -10,12 +10,23 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
 
 log = logging.getLogger(__name__)
+
+
+# Claude Code in -p mode bills an API key or auth token it finds in its environment
+# instead of the signed-in plan, so `claude` never gets these.
+HIDDEN_FROM_CLAUDE = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def claude_env() -> dict[str, str]:
+    """This process's environment without the Anthropic credentials."""
+    return {k: v for k, v in os.environ.items() if k not in HIDDEN_FROM_CLAUDE}
 
 
 class LLMError(Exception):
@@ -97,6 +108,11 @@ def structured(
     backend = ai.backend(settings)
     if backend == "off":
         raise AIUnavailable(ai.off_reason(settings.ai_backend))
+    if backend == "api":
+        # Checked before every API call, so a long run stops at the cap, not after it.
+        paused = ai.cap_reason(settings)
+        if paused:
+            raise AIUnavailable(paused)
     binary = claude_binary() if backend == "claude_code" else None
     row: dict = {
         "step": step,
@@ -172,7 +188,13 @@ def _run(
     with tempfile.TemporaryDirectory() as cwd:
         try:
             proc = subprocess.run(
-                cmd, input=prompt, capture_output=True, text=True, timeout=timeout, cwd=cwd
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=cwd,
+                env=claude_env(),
             )
         except subprocess.TimeoutExpired as e:
             raise _fail(row, "timeout", f"claude timed out after {timeout}s") from e

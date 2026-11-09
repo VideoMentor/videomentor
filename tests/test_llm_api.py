@@ -252,7 +252,7 @@ def test_sdk_errors_map_to_kinds(stub, exc, kind):
 
 
 def test_key_never_in_error_or_row(stub, monkeypatch, caplog):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    llm_api.set_key(FAKE_KEY)
     monkeypatch.setattr(llm, "claude_binary", lambda: (_ for _ in ()).throw(llm.LLMError("no")))
     stub(
         anthropic.AuthenticationError(
@@ -275,7 +275,7 @@ def test_key_never_in_error_or_row(stub, monkeypatch, caplog):
 
 
 def test_structured_routes_to_api_when_cli_missing_and_key_set(stub, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    llm_api.set_key(FAKE_KEY)
     monkeypatch.setattr(llm.shutil, "which", lambda name: None)
     client = stub(response())
     rows = []
@@ -291,19 +291,19 @@ def test_structured_routes_to_api_when_cli_missing_and_key_set(stub, monkeypatch
 
 
 def test_structured_without_cli_or_key_says_ai_is_off(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    llm_api.set_key(None)
     monkeypatch.setattr(llm.shutil, "which", lambda name: None)
     with pytest.raises(llm.LLMError, match="AI is off: Claude Code isn't installed"):
         llm.structured("hello", system="SYS", schema=SCHEMA, model="haiku")
 
 
 def test_no_stub_never_builds_a_real_client(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    llm_api.set_key(FAKE_KEY)
     with pytest.raises(RuntimeError, match="Anthropic API disabled in tests"):
         call()
 
 
-def test_real_client_uses_only_the_env_key(monkeypatch):
+def test_real_client_uses_only_the_stored_key(monkeypatch):
     seen = {}
 
     def fake_anthropic(**kw):
@@ -311,7 +311,7 @@ def test_real_client_uses_only_the_env_key(monkeypatch):
         return StubClient(response())
 
     monkeypatch.setattr(llm_api.anthropic, "Anthropic", fake_anthropic)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    llm_api.set_key(FAKE_KEY)
     assert call() == {"items": []}
     assert seen == {"api_key": FAKE_KEY, "max_retries": 1}
 

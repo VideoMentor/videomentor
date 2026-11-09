@@ -10,6 +10,7 @@ import sqlite3
 from datetime import date, datetime, timedelta
 
 from . import db
+from .library import NOT_MINE
 
 KINDS: dict[str, tuple[list[int], str]] = {
     "videos": ([10, 25, 50, 100, 250, 500, 1000, 2500, 5000], "{n} videos triaged"),
@@ -17,9 +18,11 @@ KINDS: dict[str, tuple[list[int], str]] = {
     "streak": ([3, 7, 14, 30, 60, 100, 365], "{n}-day streak"),
 }
 
+# Neither the automatic archive of unavailable videos nor the bulk archive of Not for
+# learning is a triage decision of yours.
 MINE = (
     "undone = 0 AND action IN ('keep', 'archive', 'prioritize')"
-    " AND COALESCE(reason, '') != 'unavailable'"
+    f" AND COALESCE(reason, '') NOT IN {NOT_MINE}"
 )
 
 

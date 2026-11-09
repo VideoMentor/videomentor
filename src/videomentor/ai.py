@@ -1,19 +1,20 @@
 """Which AI backend runs the LLM steps, and the monthly cost cap for the API.
 
 ``ai_backend`` is "auto", "claude_code", "api" or "off". Auto uses the ``claude`` CLI
-when it's on PATH, else the Anthropic API when ``ANTHROPIC_API_KEY`` is set, else
-nothing. A choice that isn't available counts as off. The cap only applies to the API,
-since Claude Code runs on your Claude plan.
+when it's on PATH, else the Anthropic API when an API key was given (``ANTHROPIC_API_KEY``
+at startup, kept by ``llm_api``), else nothing. A choice that isn't available counts as
+off. The cap only applies to the API, since Claude Code runs on your Claude plan.
 """
 
 from __future__ import annotations
 
-import os
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
-from . import llm
+from . import db, llm, llm_api
 from .config import Settings
 
 Backend = Literal["claude_code", "api", "off"]
@@ -42,7 +43,7 @@ def _cli_available() -> bool:
 
 
 def _key_available() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return bool(llm_api.key())
 
 
 def backend(settings: Settings) -> Backend:
@@ -87,14 +88,42 @@ def month_cost(conn: sqlite3.Connection) -> float:
     return float(row[0])
 
 
+def paused_reason(settings: Settings) -> str:
+    return f"AI paused: this month's ${float(settings.ai_monthly_cap_usd):.2f} limit is used"
+
+
+# The library that usage rows go to; usage.install() sets it (None: the default library).
+_usage_path: Path | None = None
+
+
+def set_usage_path(path: Path | None) -> None:
+    global _usage_path
+    _usage_path = path
+
+
+def cap_reason(settings: Settings) -> str | None:
+    """The paused reason when this month's API cost has reached the cap, else None.
+
+    ``llm.structured`` calls this before every API call. It opens its own short
+    connection, as the usage recorder does, since callers may hold a transaction.
+    """
+    with closing(db.connect(_usage_path)) as conn:
+        try:
+            cost = month_cost(conn)
+        except sqlite3.OperationalError as e:
+            if "no such table" not in str(e):
+                raise
+            cost = 0.0  # a library with no llm_calls table has spent nothing
+    return paused_reason(settings) if cost >= float(settings.ai_monthly_cap_usd) else None
+
+
 def _check(conn: sqlite3.Connection, settings: Settings) -> tuple[Backend, float, str | None]:
     b = backend(settings)
     cost = month_cost(conn)
     if b == "off":
         return b, cost, off_reason(settings.ai_backend)
-    cap = float(settings.ai_monthly_cap_usd)
-    if b == "api" and cost >= cap:
-        return b, cost, f"AI paused: this month's ${cap:.2f} limit is used"
+    if b == "api" and cost >= float(settings.ai_monthly_cap_usd):
+        return b, cost, paused_reason(settings)
     return b, cost, None
 
 

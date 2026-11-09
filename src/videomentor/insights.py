@@ -12,7 +12,7 @@ import statistics
 from datetime import UTC, datetime, timedelta
 
 from . import actions, db, usage
-from .library import MAIN_CATEGORIES, card, pulled_only_sql
+from .library import MAIN_CATEGORIES, NOT_MINE, card, pulled_only_sql
 
 # Durations over a day are bad metadata (live streams that never ended), so they count as unknown.
 DUR = "(CASE WHEN {c}duration_s > 86400 THEN NULL ELSE {c}duration_s END)"
@@ -192,7 +192,7 @@ def _funnel(conn: sqlite3.Connection) -> dict:
         conn.execute("SELECT analysis_status, COUNT(*) FROM items GROUP BY analysis_status")
     )
     marks = ",".join("?" * len(DECIDED))
-    mine = f"action IN ({marks}) AND COALESCE(reason, '') != 'unavailable'"
+    mine = f"action IN ({marks}) AND COALESCE(reason, '') NOT IN {NOT_MINE}"
     week = (datetime.now(UTC) - timedelta(days=7)).isoformat(timespec="seconds")
     d = conn.execute(
         f"SELECT COUNT(*) AS n, COALESCE(SUM(undone), 0) AS undone,"
@@ -228,7 +228,7 @@ def _signal_keep(conn: sqlite3.Connection) -> list[dict]:
         conn.execute(
             "SELECT signal, SUM(status = 'kept') AS kept, SUM(status = 'archived') AS archived"
             " FROM items WHERE signal IS NOT NULL AND status IN ('kept', 'archived')"
-            " AND COALESCE(status_reason, '') != 'unavailable'"
+            f" AND COALESCE(status_reason, '') NOT IN {NOT_MINE}"
             " GROUP BY signal ORDER BY signal"
         )
     )
@@ -241,7 +241,7 @@ def _signal_keep_clean(conn: sqlite3.Connection) -> list[dict]:
         conn.execute(
             "WITH last AS (SELECT d.*, ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY id DESC)"
             f" AS rn FROM decisions d WHERE action IN ({marks}) AND undone = 0"
-            " AND COALESCE(reason, '') != 'unavailable')"
+            f" AND COALESCE(reason, '') NOT IN {NOT_MINE})"
             " SELECT signal, SUM(action != 'archive') AS kept, SUM(action = 'archive') AS archived"
             " FROM last WHERE rn = 1 AND signal IS NOT NULL GROUP BY signal ORDER BY signal",
             DECIDED,

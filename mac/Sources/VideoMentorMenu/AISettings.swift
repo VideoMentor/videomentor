@@ -203,7 +203,7 @@ struct AISettingsView: View {
                 if let note = model.keyNote {
                     Text(note).font(.callout)
                 }
-                Text("The key stays in this Mac's keychain. VideoMentor only uses it when AI runs through the API key.")
+                Text("The key stays in this Mac's keychain. VideoMentor uses it only when AI runs through the API key, and never passes it to Claude Code.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

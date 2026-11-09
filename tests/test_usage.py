@@ -190,8 +190,27 @@ def test_vm_stats_prints_by_step(conn, capsys):
     out = capsys.readouterr().out
     assert "prep" in out and "analyze" in out
     assert "All time" in out and "Last 7 days" in out
-    assert "not billed on Pro or Max plans" in out
+    assert "billed to your Anthropic account" in out
+    assert "count toward your Claude plan's usage limits" in out
+    assert "not billed on Pro or Max" not in out
     assert "—" not in out
+
+
+def test_usage_is_split_by_backend(conn, capsys):
+    seed_calls(conn)  # older rows have no backend: they ran through Claude Code
+    conn.execute(
+        "INSERT INTO llm_calls (at, step, ok, cost_usd, backend) VALUES (?, 'prep', 1, 0.5, 'api')",
+        (db.now(),),
+    )
+    conn.commit()
+    s = usage.summary(conn)
+    by = {r["backend"]: r for r in s["by_backend"]}
+    assert by["api"]["calls"] == 1 and by["api"]["cost_usd"] == pytest.approx(0.5)
+    assert by["claude_code"]["calls"] == 3 and by["claude_code"]["cost_usd"] == pytest.approx(0.21)
+    assert "billed to your Anthropic account" in s["note"]
+    cli.main(["stats"])
+    out = capsys.readouterr().out
+    assert "API key (billed)" in out and "Claude Code (plan)" in out
 
 
 @pytest.mark.parametrize(
