@@ -321,6 +321,27 @@ def decide(
     return {"decision_id": decision_id, "item": card(conn, db.get_item(conn, item_id))}
 
 
+def _revert(conn: sqlite3.Connection, r: sqlite3.Row, ts: str) -> dict:
+    """Roll one decision back and log the undo. Returns the item's card."""
+    item = db.get_item(conn, r["item_id"])
+    # Only roll back the analysis state if the worker hasn't moved it since.
+    analysis = item["analysis_status"]
+    if analysis == r["new_analysis_status"]:
+        analysis = r["prev_analysis_status"]
+    conn.execute(
+        "UPDATE items SET status = ?, priority = ?, analysis_status = ?,"
+        " status_reason = NULL, updated_at = ? WHERE id = ?",
+        (r["prev_status"], r["prev_priority"], analysis, ts, r["item_id"]),
+    )
+    conn.execute("UPDATE decisions SET undone = 1 WHERE id = ?", (r["id"],))
+    conn.execute(
+        "INSERT INTO decisions (item_id, action, prev_status, new_status, reason, at)"
+        " VALUES (?, 'undo', ?, ?, ?, ?)",
+        (r["item_id"], r["new_status"], r["prev_status"], f"undo #{r['id']}", ts),
+    )
+    return card(conn, db.get_item(conn, r["item_id"]))
+
+
 def undo(conn: sqlite3.Connection, decision_id: int | None = None) -> dict:
     """Revert one decision (or the newest), plus the rest of its batch for group decisions."""
     if decision_id is None:
@@ -349,59 +370,72 @@ def undo(conn: sqlite3.Connection, decision_id: int | None = None) -> dict:
         if later:
             raise UndoConflict(f"decision {r['id']} has a later decision for {r['item_id']}")
     ts = db.now()
-    items = []
-    for r in rows:
-        item = db.get_item(conn, r["item_id"])
-        # Only roll back the analysis state if the worker hasn't moved it since.
-        analysis = item["analysis_status"]
-        if analysis == r["new_analysis_status"]:
-            analysis = r["prev_analysis_status"]
-        conn.execute(
-            "UPDATE items SET status = ?, priority = ?, analysis_status = ?,"
-            " status_reason = NULL, updated_at = ? WHERE id = ?",
-            (r["prev_status"], r["prev_priority"], analysis, ts, r["item_id"]),
-        )
-        conn.execute("UPDATE decisions SET undone = 1 WHERE id = ?", (r["id"],))
-        conn.execute(
-            "INSERT INTO decisions (item_id, action, prev_status, new_status, reason, at)"
-            " VALUES (?, 'undo', ?, ?, ?, ?)",
-            (r["item_id"], r["new_status"], r["prev_status"], f"undo #{r['id']}", ts),
-        )
-        items.append(card(conn, db.get_item(conn, r["item_id"])))
+    items = [_revert(conn, r, ts) for r in rows]
     return {"undone": [r["id"] for r in rows], "items": items}
 
 
 def undo_batch(conn: sqlite3.Connection, batch: str) -> dict:
-    """Revert every decision still standing in one batch (nothing if it is gone or undone)."""
-    row = conn.execute(
-        "SELECT id FROM decisions WHERE batch = ? AND undone = 0 AND action != 'undo'"
-        " ORDER BY id LIMIT 1",
+    """Revert what can be reverted in one batch; items decided again since stay as they are.
+
+    Returns the ids undone, their cards, and how many were skipped.
+    """
+    rows = conn.execute(
+        "SELECT * FROM decisions WHERE batch = ? AND undone = 0 AND action != 'undo'"
+        " ORDER BY id DESC",
         (batch,),
-    ).fetchone()
-    if row is None:
-        return {"undone": [], "items": []}
-    return undo(conn, row["id"])
+    ).fetchall()
+    ts = db.now()
+    undone, items, skipped = [], [], 0
+    for r in rows:
+        later = conn.execute(
+            "SELECT 1 FROM decisions WHERE item_id = ? AND id > ? AND undone = 0"
+            " AND (batch IS NULL OR batch != ?)",
+            (r["item_id"], r["id"], batch),
+        ).fetchone()
+        if later:
+            skipped += 1
+            continue
+        items.append(_revert(conn, r, ts))
+        undone.append(r["id"])
+    return {"undone": undone, "items": items, "skipped": skipped}
 
 
-NL_SCOPE = "status = 'inbox' AND category IN ('" + "','".join(MUSIC_CATEGORIES) + "')"
+def nl_where(prefix: str = "", include_unprepped: bool = False) -> str:
+    """SQL for Not for learning: inbox music and entertainment the deck would deal.
+
+    The deck, the counts and the bulk archive all use this, so the numbers match.
+    Videos only pulled from a channel are left out, as in the main deck.
+    """
+    cats = "','".join(MUSIC_CATEGORIES)
+    return (
+        f"{prefix}status = 'inbox' AND {prefix}available = 1"
+        f" AND {_dealable(prefix, include_unprepped)} AND {prefix}category IN ('{cats}')"
+        f" AND NOT ({pulled_only_sql(prefix + 'id')})"
+    )
 
 
-def not_for_learning_counts(conn: sqlite3.Connection, older_than_days: int = 30) -> dict:
-    """Inbox music and entertainment, and how many of those were saved long enough ago."""
+def not_for_learning_counts(
+    conn: sqlite3.Connection, older_than_days: int = 30, include_unprepped: bool = False
+) -> dict:
+    """Inbox music and entertainment, and how many were saved long enough ago."""
     cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat(timespec="seconds")
+    where = nl_where("", include_unprepped)
     return {
-        "inbox": conn.execute(f"SELECT COUNT(*) FROM items WHERE {NL_SCOPE}").fetchone()[0],
+        "inbox": conn.execute(f"SELECT COUNT(*) FROM items WHERE {where}").fetchone()[0],
         "older": conn.execute(
-            f"SELECT COUNT(*) FROM items WHERE {NL_SCOPE} AND added_at < ?", (cutoff,)
+            f"SELECT COUNT(*) FROM items WHERE {where} AND added_at < ?", (cutoff,)
         ).fetchone()[0],
     }
 
 
-def archive_not_for_learning(conn: sqlite3.Connection, older_than_days: int = 30) -> dict:
-    """Archive old inbox music and entertainment as one batch, so one Undo brings them back."""
+def archive_not_for_learning(
+    conn: sqlite3.Connection, older_than_days: int = 30, include_unprepped: bool = False
+) -> dict:
+    """Archive old Not for learning videos as one batch, so one Undo brings them back."""
     cutoff = (datetime.now(UTC) - timedelta(days=older_than_days)).isoformat(timespec="seconds")
+    where = nl_where("", include_unprepped)
     rows = conn.execute(
-        f"SELECT * FROM items WHERE {NL_SCOPE} AND added_at < ? ORDER BY added_at", (cutoff,)
+        f"SELECT * FROM items WHERE {where} AND added_at < ? ORDER BY added_at", (cutoff,)
     ).fetchall()
     batch = f"nl-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
     for r in rows:
@@ -543,16 +577,20 @@ def deck(
     save first), "nl" (Not for learning: music and entertainment from any source), or "pl:<id>" (one playlist: newest save first when the API dates are
     known, else its stored order).
     """
-    # "nl" (Not for learning) is a source of the main deck; the "music" deck is the same
-    # thing for older clients.
-    music = which == "music" or source == "nl"
-    categories = MUSIC_CATEGORIES if music else MAIN_CATEGORIES
+    # "nl" (Not for learning) is a source of the main deck. It deals the same cards the
+    # counts and the bulk archive use (nl_where). The "music" deck is the older way to ask
+    # for music and entertainment and keeps its own query.
+    nl = source == "nl"
+    music = which == "music"
+    categories = () if nl else MUSIC_CATEGORIES if music else MAIN_CATEGORIES
     marks = ",".join("?" * len(categories))
     excl = ",".join("?" * len(exclude)) or "''"
     # Items whose prep failed still show (without a why-line) so a broken LLM never
     # empties the deck; they have no category and fall into the main deck.
     category_clause = (
-        f"items.category IN ({marks})"
+        nl_where("items.", include_unprepped)
+        if nl
+        else f"items.category IN ({marks})"
         if music
         else f"(items.category IN ({marks}) OR items.category IS NULL)"
     )
@@ -565,8 +603,6 @@ def deck(
         join = " JOIN item_sources cs ON cs.item_id = items.id AND cs.source = 'channel:' || ?"
         extra = (source[3:],)
         order = f"{POSTED_KEY} IS NULL, {POSTED_KEY} DESC"
-        saves_only = ""
-    elif source == "nl":
         saves_only = ""
     elif source == "wl":
         join = " JOIN item_sources s ON s.item_id = items.id AND s.source = 'youtube:watch_later'"

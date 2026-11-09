@@ -10,13 +10,13 @@ import { TidyTagsScreen } from './TidyTagsScreen';
 import { ProgressCard } from '../components/ProgressCard';
 import { DelightSettingsCard } from '../kit/delight/DelightSettingsCard';
 import { SignalSettingsScreen } from './SignalSettingsScreen';
-import { ApiError, AuthError, api, isNetworkError } from '../lib/api';
+import { AuthError, api, isNetworkError } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import { backupLine } from '../lib/backupLine';
 import type { AiChoice, AiStatus, PairedDevice, StatusResponse } from '../lib/types';
 import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped, parseCap } from '../lib/aiView';
 import { queue } from '../state/queue';
-import { OLDER_THAN_DAYS, archiveQuestion, clearLastBatch, nlLine, readLastBatch, saveLastBatch, type LastBatch } from '../lib/notForLearning';
+import { OLDER_THAN_DAYS, archiveQuestion, broughtBackLine, clearLastBatch, nlLine, readLastBatch, saveLastBatch, type LastBatch } from '../lib/notForLearning';
 import { storage } from '../state/storage';
 import type { NotForLearning } from '../lib/types';
 
@@ -30,7 +30,7 @@ interface Props {
 }
 
 const COUNT_LABELS: [keyof StatusResponse['counts'], string][] = [
-  ['inbox', 'Main deck'],
+  ['inbox', 'To triage'],
   ['kept', 'Kept'],
   ['archived', 'Archived'],
   ['queued', 'Waiting for analysis'],
@@ -408,17 +408,11 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
       const r = await api.undoBatch(last.batch);
       clearLastBatch(storage);
       setLast(null);
-      setNote(r.undone.length ? `Brought back ${r.undone.length}.` : 'Nothing left to bring back.');
+      setNote(broughtBackLine(r.undone, r.skipped));
       onChanged();
       void load();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        clearLastBatch(storage);
-        setLast(null);
-        setNote('Some of these were decided again since, so they can’t all be undone.');
-      } else if (!(err instanceof AuthError)) {
-        setNote(errText(err));
-      }
+      if (!(err instanceof AuthError)) setNote(errText(err));
     } finally {
       setBusy(false);
     }
@@ -439,7 +433,13 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
           </button>
         </>
       ) : (
-        <button className="secondary" onClick={() => setConfirming(true)} disabled={!online || busy || !counts || counts.older === 0}>
+        <button
+          className="secondary"
+          onClick={() => {
+            // The count in the question must be current: refresh it first.
+            void load().then(() => setConfirming(true));
+          }}
+          disabled={!online || busy || !counts || counts.older === 0}>
           Archive the older ones
         </button>
       )}

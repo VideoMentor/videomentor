@@ -356,15 +356,15 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             raise HTTPException(409, str(e)) from None
         for it in result["items"]:
             markdown.write_item(c, it["id"])
-        return result
+        return {"undone": len(result["undone"]), "skipped": result["skipped"]}
 
     @app.get("/api/not-for-learning", dependencies=[api])
     def not_for_learning(c: sqlite3.Connection = Depends(conn)):
-        return library.not_for_learning_counts(c)
+        return library.not_for_learning_counts(c, include_unprepped=no_ai(c))
 
     @app.post("/api/not-for-learning/archive", dependencies=[api])
     def not_for_learning_archive(body: NotForLearningIn, c: sqlite3.Connection = Depends(conn)):
-        result = library.archive_not_for_learning(c, body.older_than_days)
+        result = library.archive_not_for_learning(c, body.older_than_days, no_ai(c))
         for r in c.execute("SELECT item_id FROM decisions WHERE batch = ?", (result["batch"],)):
             markdown.write_item(c, r["item_id"])
         return result

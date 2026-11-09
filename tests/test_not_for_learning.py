@@ -72,9 +72,9 @@ def test_archive_undo_restores_exactly(conn):
     with client() as c:
         r = c.post("/api/undo-batch", json={"batch": out["batch"]})
         assert r.status_code == 200
-        assert len(r.json()["undone"]) == 2
-        assert c.post("/api/undo-batch", json={"batch": out["batch"]}).json()["undone"] == []
-        assert c.post("/api/undo-batch", json={"batch": "nl-none"}).json()["undone"] == []
+        assert r.json() == {"undone": 2, "skipped": 0}
+        assert c.post("/api/undo-batch", json={"batch": out["batch"]}).json()["undone"] == 0
+        assert c.post("/api/undo-batch", json={"batch": "nl-none"}).json()["undone"] == 0
     assert {k: status(conn, v) for k, v in ids.items()} == before
 
 
@@ -97,3 +97,38 @@ def test_offline_pack_deals_the_nl_source(conn):
         ids["ent_old"],
         ids["music_new"],
     }
+
+
+def test_undo_batch_is_partial_when_one_was_decided_again(conn):
+    ids = seed(conn)
+    out = library.archive_not_for_learning(conn)
+    library.decide(conn, ids["ent_old"], "keep", "later")
+    conn.commit()
+    with client() as c:
+        r = c.post("/api/undo-batch", json={"batch": out["batch"]})
+    assert r.status_code == 200
+    assert r.json() == {"undone": 1, "skipped": 1}
+    assert status(conn, ids["music_old"]) == "inbox"
+    assert status(conn, ids["ent_old"]) == "kept"
+
+
+def test_nl_scope_is_saves_only_and_available(conn):
+    ids = seed(conn)
+    pulled = add(conn, "mmmmmmmmmm6", category="music", added=days_ago(40))
+    conn.execute("DELETE FROM item_sources WHERE item_id = ?", (pulled,))
+    conn.execute(
+        "INSERT INTO item_sources (item_id, source, first_seen) VALUES (?, 'channel:UCx', '2026-01-01')",
+        (pulled,),
+    )
+    gone = add(conn, "mmmmmmmmmm7", category="music", added=days_ago(40))
+    conn.execute("UPDATE items SET available = 0 WHERE id = ?", (gone,))
+    conn.commit()
+    dealt = {c["id"] for c in library.deck(conn, "main", 20, [], "nl")}
+    assert pulled not in dealt and gone not in dealt
+    counts = library.not_for_learning_counts(conn)
+    assert counts == {"inbox": len(dealt), "older": 2}
+    out = library.archive_not_for_learning(conn)
+    assert out["archived"] == counts["older"]
+    assert status(conn, pulled) == "inbox"
+    assert status(conn, gone) == "inbox"
+    assert status(conn, ids["music_old"]) == "archived"

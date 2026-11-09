@@ -286,8 +286,7 @@ export const api = {
   decideBatch: (decisions: DecisionPayload[]) =>
     request<{ results: unknown[] }>('/api/decisions/batch', { body: { decisions } }).then((r) => r?.results ?? []),
 
-  undoBatch: (batch: string) =>
-    request<{ undone: (string | number)[]; items: Card[] }>('/api/undo-batch', { body: { batch } }),
+  undoBatch: (batch: string) => request<{ undone: number; skipped: number }>('/api/undo-batch', { body: { batch } }),
 
   notForLearning: (signal?: AbortSignal) => request<NotForLearning>('/api/not-for-learning', { signal }),
 

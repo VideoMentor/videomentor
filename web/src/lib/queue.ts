@@ -14,6 +14,7 @@ import type { DecisionAction, DecisionPayload } from './types';
 export interface KVStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface BatchResult {
@@ -350,5 +351,8 @@ export class MemoryStorage implements KVStorage {
   }
   setItem(key: string, value: string): void {
     this.map.set(key, value);
+  }
+  removeItem(key: string): void {
+    this.map.delete(key);
   }
 }

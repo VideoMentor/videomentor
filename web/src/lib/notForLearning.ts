@@ -1,6 +1,7 @@
 // Not for learning: the card text and the remembered batch that Undo reverses.
 import type { KVStorage } from './queue';
-import type { NotForLearning } from './types';
+import { NOT_FOR_LEARNING } from './deck';
+import type { DeckSource, NotForLearning } from './types';
 
 export const LAST_BATCH_KEY = 'vm.nlLastBatch.v1';
 export const OLDER_THAN_DAYS = 30;
@@ -38,8 +39,31 @@ export function saveLastBatch(store: KVStorage, b: LastBatch): void {
 
 export function clearLastBatch(store: KVStorage): void {
   try {
-    store.setItem(LAST_BATCH_KEY, '');
+    if (store.removeItem) store.removeItem(LAST_BATCH_KEY);
+    else store.setItem(LAST_BATCH_KEY, '');
   } catch {
     // nothing to clear
+  }
+}
+
+/** "Brought back 12. 3 were decided again since and stayed as they are." */
+export function broughtBackLine(undone: number, skipped: number): string {
+  if (undone === 0 && skipped === 0) return 'Nothing left to bring back.';
+  const back = `Brought back ${undone.toLocaleString()}.`;
+  return skipped === 0 ? back : `${back} ${skipped.toLocaleString()} ${skipped === 1 ? 'was' : 'were'} decided again since and stayed as they are.`;
+}
+
+const LEGACY_DECK_KEY = 'vm.deckKey';
+
+/** The Music deck is gone. A device that last used it starts on Not for learning; the old key is removed. */
+export function consumeLegacyDeckKey(store: KVStorage): DeckSource | null {
+  try {
+    const raw = store.getItem(LEGACY_DECK_KEY);
+    if (raw === null) return null;
+    if (store.removeItem) store.removeItem(LEGACY_DECK_KEY);
+    else store.setItem(LEGACY_DECK_KEY, '');
+    return raw.replace(/"/g, '') === 'music' ? NOT_FOR_LEARNING : null;
+  } catch {
+    return null;
   }
 }

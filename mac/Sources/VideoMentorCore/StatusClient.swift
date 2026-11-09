@@ -5,19 +5,16 @@ public struct EngineStatus: Decodable, Sendable, Equatable {
     public struct Counts: Decodable, Sendable, Equatable {
         public let total: Int
         public let inbox: Int
-        public let musicInbox: Int
         public let ready: Int
 
         enum CodingKeys: String, CodingKey {
             case total, inbox, ready
-            case musicInbox = "music_inbox"
         }
 
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             total = try c.decodeIfPresent(Int.self, forKey: .total) ?? 0
             inbox = try c.decodeIfPresent(Int.self, forKey: .inbox) ?? 0
-            musicInbox = try c.decodeIfPresent(Int.self, forKey: .musicInbox) ?? 0
             ready = try c.decodeIfPresent(Int.self, forKey: .ready) ?? 0
         }
     }
@@ -56,8 +53,8 @@ public struct EngineStatus: Decodable, Sendable, Equatable {
     public let lastSync: LastSync?
     public let youtubeState: String?
 
-    /// Videos waiting for a decision: the inbox plus the music inbox.
-    public var toTriage: Int { counts.inbox + counts.musicInbox }
+    /// Videos waiting for a decision: the learning inbox (music and entertainment are Not for learning).
+    public var toTriage: Int { counts.inbox }
 
     enum CodingKeys: String, CodingKey {
         case counts

@@ -3,7 +3,8 @@
 import { useSyncExternalStore } from 'react';
 import { ALL } from '../lib/deck';
 import type { DeckOrder, DeckSource } from '../lib/types';
-import { readJSON, writeJSON } from './storage';
+import { consumeLegacyDeckKey } from '../lib/notForLearning';
+import { readJSON, storage, writeJSON } from './storage';
 
 export { ALL, ALL_PLAYLISTS, NOT_FOR_LEARNING, WATCH_LATER } from '../lib/deck';
 
@@ -16,6 +17,11 @@ function valid(s: unknown): s is DeckSource {
 }
 
 let current: DeckSource = (() => {
+  const legacy = consumeLegacyDeckKey(storage);
+  if (legacy) {
+    writeJSON(KEY, legacy);
+    return legacy;
+  }
   const saved = readJSON<unknown>(KEY, ALL);
   return valid(saved) ? saved : ALL;
 })();

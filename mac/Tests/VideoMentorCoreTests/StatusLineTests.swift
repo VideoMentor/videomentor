@@ -7,7 +7,7 @@ final class StatusLineTests: XCTestCase {
 
     private func status(finished: String?) -> EngineStatus {
         let sync = finished.map { #","last_sync":{"started_at":"2026-11-09T14:00:00+00:00","finished_at":"\#($0)"}"# } ?? ""
-        let json = #"{"counts":{"total":2239,"inbox":1097,"music_inbox":110,"ready":5},"youtube_api":{"state":"ok"}\#(sync)}"#
+        let json = #"{"counts":{"total":2239,"inbox":1207,"music_inbox":110,"ready":5},"youtube_api":{"state":"ok"}\#(sync)}"#
         return try! JSONDecoder().decode(EngineStatus.self, from: Data(json.utf8))
     }
 

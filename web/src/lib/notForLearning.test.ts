@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryStorage } from './queue';
-import { LAST_BATCH_KEY, archiveQuestion, clearLastBatch, nlLine, readLastBatch, saveLastBatch } from './notForLearning';
+import { LAST_BATCH_KEY, archiveQuestion, broughtBackLine, clearLastBatch, consumeLegacyDeckKey, nlLine, readLastBatch, saveLastBatch } from './notForLearning';
 
 describe('not for learning text', () => {
   it('says how many are waiting and how many are older', () => {
@@ -31,5 +31,31 @@ describe('last batch', () => {
     expect(readLastBatch(store)).toBeNull();
     store.setItem(LAST_BATCH_KEY, 'nope');
     expect(readLastBatch(store)).toBeNull();
+  });
+});
+
+describe('undo message', () => {
+  it('says how many came back and how many stayed', () => {
+    expect(broughtBackLine(410, 0)).toBe('Brought back 410.');
+    expect(broughtBackLine(9, 3)).toBe('Brought back 9. 3 were decided again since and stayed as they are.');
+    expect(broughtBackLine(0, 1)).toBe('Brought back 0. 1 was decided again since and stayed as they are.');
+    expect(broughtBackLine(0, 0)).toBe('Nothing left to bring back.');
+  });
+});
+
+describe('old Music deck preference', () => {
+  it('moves a device that was on Music to Not for learning and removes the key', () => {
+    const store = new MemoryStorage();
+    store.setItem('vm.deckKey', '"music"');
+    expect(consumeLegacyDeckKey(store)).toEqual({ key: 'nl', label: 'Not for learning' });
+    expect(store.getItem('vm.deckKey')).toBeNull();
+    expect(consumeLegacyDeckKey(store)).toBeNull();
+  });
+
+  it('removes the key but changes nothing for the main deck', () => {
+    const store = new MemoryStorage();
+    store.setItem('vm.deckKey', '"main"');
+    expect(consumeLegacyDeckKey(store)).toBeNull();
+    expect(store.getItem('vm.deckKey')).toBeNull();
   });
 });
