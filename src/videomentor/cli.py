@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import logging
 import os
@@ -393,15 +394,19 @@ def cmd_serve(args, settings) -> None:
     )
 
 
-def cmd_install_service(args, settings) -> None:
-    """Install a copy outside ~/Documents and start it at login.
+def web_dist() -> Path:
+    return Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+def install_engine() -> None:
+    """Install the `vm` tool and copy the web build into the library home.
 
     macOS privacy protection blocks a background service from reading ~/Documents
     (where the repo lives) without a permission prompt nobody is there to answer, so
-    the service runs an installed copy and serves the app from ~/VideoMentor/web.
+    the engine runs an installed copy and serves the app from ~/VideoMentor/web.
     """
     repo = Path(__file__).resolve().parents[2]
-    dist = repo / "web" / "dist"
+    dist = web_dist()
     if not (dist / "index.html").exists():
         sys.exit("Build the app first: (cd web && npm install && npm run build)")
     web_copy = library_home() / "web"
@@ -410,10 +415,15 @@ def cmd_install_service(args, settings) -> None:
 
     uv = shutil.which("uv") or sys.exit("uv is not on PATH")
     subprocess.run([uv, "tool", "install", "--force", "--reinstall", str(repo)], check=True)
-    vm = str(Path.home() / ".local/bin/vm")
 
-    log_dir = library_home() / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
+
+def launch_info(settings) -> dict:
+    """How to start the engine; the Mac app and the LaunchAgent both use this."""
+    home = library_home()
+    try:
+        build = str(json.loads((home / "web" / "build.json").read_text()).get("build", ""))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        build = ""
     # launchd starts with a bare PATH; include where claude, node and tailscale live.
     path = ":".join(
         [
@@ -426,20 +436,48 @@ def cmd_install_service(args, settings) -> None:
             "/sbin",
         ]
     )
+    return {
+        "program": str(Path.home() / ".local/bin/vm"),
+        "args": ["serve"],
+        "env": {
+            "PATH": path,
+            "VM_HOME": str(home),
+            "VM_WEB_DIST": str(home / "web"),
+            "PYTHONUNBUFFERED": "1",
+        },
+        "log": str(home / "logs" / "serve.log"),
+        "port": settings.port,
+        "host": settings.host,
+        "pair_code": settings.pair_code,
+        "version": importlib.metadata.version("videomentor"),
+        "build": build,
+    }
+
+
+def cmd_install(args, settings) -> None:
+    install_engine()
+    print("Installed the vm tool and the app copy. Re-run after code or app changes.")
+
+
+def cmd_launch_info(args, settings) -> None:
+    print(json.dumps(launch_info(settings), indent=2))
+
+
+def cmd_install_service(args, settings) -> None:
+    """Install a copy outside ~/Documents and start it at login."""
+    install_engine()
+    info = launch_info(settings)
+    log = Path(info["log"])
+    log.parent.mkdir(parents=True, exist_ok=True)
     plist = {
         "Label": LAUNCH_LABEL,
-        "ProgramArguments": [vm, "serve"],
+        "ProgramArguments": [info["program"], *info["args"]],
         "RunAtLoad": True,
         "KeepAlive": True,
         "WorkingDirectory": str(library_home()),
-        "EnvironmentVariables": {
-            "PATH": path,
-            "VM_HOME": str(library_home()),
-            "VM_WEB_DIST": str(web_copy),
-            "PYTHONUNBUFFERED": "1",
-        },
-        "StandardOutPath": str(log_dir / "serve.log"),
-        "StandardErrorPath": str(log_dir / "serve.log"),
+        "EnvironmentVariables": info["env"],
+        "StandardOutPath": str(log),
+        "StandardErrorPath": str(log),
     }
     LAUNCH_PLIST.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -447,7 +485,7 @@ def cmd_install_service(args, settings) -> None:
     )
     LAUNCH_PLIST.write_bytes(plistlib.dumps(plist))
     subprocess.run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(LAUNCH_PLIST)], check=True)
-    print(f"Installed {LAUNCH_PLIST}; logs in {log_dir / 'serve.log'}")
+    print(f"Installed {LAUNCH_PLIST}; logs in {log}")
     print("Re-run this after code or app changes to update the installed copy.")
 
 
@@ -542,6 +580,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-worker", action="store_true")
     p.set_defaults(fn=cmd_serve)
 
+    sub.add_parser(
+        "install", help="install the vm tool and app copy (no login service)"
+    ).set_defaults(fn=cmd_install)
+    p = sub.add_parser("launch-info", help="how to start the engine (for the Mac app)")
+    p.add_argument("--json", action="store_true", help="print as JSON (the default)")
+    p.set_defaults(fn=cmd_launch_info)
     sub.add_parser("install-service", help="start `vm serve` at login (LaunchAgent)").set_defaults(
         fn=cmd_install_service
     )

@@ -54,6 +54,8 @@ uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone
 | `vm pair [--new]` | Show the pairing link and 12-digit code for a phone; `--new` makes a new code. |
 | `vm devices [--sign-out ID \| --sign-out-all]` | List paired devices, or sign one or all out (also on Status > Paired devices). |
 | `vm serve` | Run the app and its background worker. |
+| `vm install` | Install the `vm` tool and the app copy without a login service (used by the Mac app). |
+| `vm launch-info --json` | Print how to start the engine: program, environment, log, port, pairing code, version and build. |
 | `vm install-service` / `uninstall-service` | Start `vm serve` at login (macOS). |
 | `vm --version` | Version and build. |
 
