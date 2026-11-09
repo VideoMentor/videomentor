@@ -8,14 +8,18 @@ cookies) is never included, and neither is ``items/`` (``vm export`` rebuilds it
 from __future__ import annotations
 
 import gzip
+import logging
 import os
 import re
 import shutil
 import sqlite3
 import tarfile
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 DIR = "backups"
 DUE_AFTER_HOURS = 20
@@ -39,27 +43,47 @@ def _files(home: Path) -> list[tuple[str, Path]]:
 
 
 def _snapshot_db(home: Path, dest: Path) -> None:
-    sidecars = [home / "library.db-wal", home / "library.db-shm"]
-    existed = {p for p in sidecars if p.exists()}
-    src = sqlite3.connect(f"{home.as_uri()}/library.db?mode=ro", uri=True)
+    """Copy the live database with SQLite's backup API.
+
+    Opened like any other connection (not read-only) and never deleting -wal/-shm files:
+    inside ``vm serve`` another thread may have them open, and removing them would lose commits.
+    """
+    src = sqlite3.connect(home / "library.db", timeout=30)
     dst = sqlite3.connect(dest)
     try:
-        src.backup(dst)
+        src.execute("PRAGMA busy_timeout = 30000")
+        src.backup(dst, pages=1024)
     finally:
         dst.close()
         src.close()
-        # A read-only open of an idle WAL database can create empty -wal/-shm files.
-        for p in sidecars:
-            if p not in existed and p.exists():
-                p.unlink()
+
+
+def _is_video(rel: str) -> bool:
+    return rel == "training/videos" or rel.startswith("training/videos/")
 
 
 def _has_files(folder: Path) -> bool:
-    return folder.is_dir() and any(p.is_file() for p in folder.rglob("*"))
+    """True when training/ holds something other than rendered video."""
+    if not folder.is_dir():
+        return False
+    videos = folder / "videos"
+    return any(p.is_file() and videos not in p.parents for p in folder.rglob("*"))
+
+
+def _tar_training(home: Path, dest: Path) -> None:
+    with tarfile.open(dest, "w:gz") as t:
+        t.add(
+            home / "training",
+            arcname="training",
+            filter=lambda ti: None if _is_video(ti.name) else ti,
+        )
 
 
 def make_backup(home: Path, now: datetime | None = None) -> Path:
-    """Write today's backup (replacing one from earlier today) and return the database file."""
+    """Write today's backup (replacing one from earlier today) and return the database file.
+
+    The training tarball is a best-effort second step: a failure there is logged only.
+    """
     now = now or datetime.now().astimezone()
     day = now.strftime("%Y-%m-%d")
     out = home / DIR
@@ -82,22 +106,23 @@ def make_backup(home: Path, now: datetime | None = None) -> Path:
         gz = temp(".gz")
         with raw.open("rb") as f_in, gzip.open(gz, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
-        tar_tmp = None
-        if _has_files(home / "training"):
-            tar_tmp = temp(".tar.gz")
-            with tarfile.open(tar_tmp, "w:gz") as t:
-                t.add(home / "training", arcname="training")
         os.replace(gz, final)
-        if tar_tmp:
-            os.replace(tar_tmp, out / f"training-{day}.tar.gz")
+        if _has_files(home / "training"):
+            try:
+                tar_tmp = temp(".tar.gz")
+                _tar_training(home, tar_tmp)
+                os.replace(tar_tmp, out / f"training-{day}.tar.gz")
+            except Exception:  # noqa: BLE001
+                log.warning("training backup failed; the database backup is kept", exc_info=True)
     finally:
         for p in temps:
-            p.unlink(missing_ok=True)
+            for suffix in ("", "-wal", "-shm", "-journal"):
+                Path(f"{p}{suffix}").unlink(missing_ok=True)
     return final
 
 
 def prune(home: Path, keep: int = 14) -> int:
-    """Keep the newest ``keep`` days of backups; return how many files were removed."""
+    """Keep the newest ``keep`` days of backups and sweep stale temp files; return files removed."""
     files = _files(home)
     days = sorted({d for d, _ in files}, reverse=True)
     old = set(days[keep:])
@@ -106,6 +131,15 @@ def prune(home: Path, keep: int = 14) -> int:
         if day in old:
             p.unlink(missing_ok=True)
             removed += 1
+    d = home / DIR
+    if d.is_dir():
+        for p in d.glob(".tmp-*"):
+            try:
+                if time.time() - p.stat().st_mtime > 86400:
+                    p.unlink()
+                    removed += 1
+            except OSError:
+                pass
     return removed
 
 

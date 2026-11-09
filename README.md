@@ -73,11 +73,14 @@ Use **Show in** in its menu to show VideoMentor in the Dock, the menu bar, or bo
 Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube and Claude requests the features need. Usage tracking (`vm stats`) keeps only token counts and costs, on your Mac, for 180 days.
 
 ## Backups and restore
-VideoMentor backs up your library once a day while the app is running and keeps 14 days, in `~/VideoMentor/backups`. Each day has `library-<date>.db.gz` and, if you have training modules, `training-<date>.tar.gz`. Secrets (sign-in tokens and cookies) are not included. To restore:
-1. Quit the VideoMentor app (or stop `vm serve`).
-2. `gunzip -c ~/VideoMentor/backups/library-<date>.db.gz > ~/VideoMentor/library.db`
-3. Delete any `library.db-wal` and `library.db-shm` files in `~/VideoMentor`.
-4. Reopen the app.
+VideoMentor backs up your library once a day while the app is running and keeps 14 days, in `~/VideoMentor/backups`. Each day has `library-<date>.db.gz` and, if you have training modules, `training-<date>.tar.gz` (rendered videos are left out). Sign-ins (tokens and cookies) are not included. To restore:
+1. Quit the VideoMentor app. If you use the login service instead, run `vm uninstall-service` first, because it restarts `vm serve` by itself.
+2. Keep a safety copy: `mv ~/VideoMentor/library.db ~/VideoMentor/library.db.before-restore`
+3. Delete `~/VideoMentor/library.db-wal` and `~/VideoMentor/library.db-shm` if they exist.
+4. `gunzip -c ~/VideoMentor/backups/library-<date>.db.gz > ~/VideoMentor/library.db`
+5. Optional, to restore training too: `tar -xzf ~/VideoMentor/backups/training-<date>.tar.gz -C ~/VideoMentor`
+6. Reopen the app, or run `vm install-service` again if you use the login service.
+7. Sign-ins are not in backups: run `vm youtube-login` again, and pair your devices again if needed. `vm export` rebuilds the Markdown notes in `items/`.
 
 ## Please read: YouTube and your own use
 - VideoMentor reads YouTube two ways: the official YouTube Data API (read-only) with your own Google Cloud client, and [yt-dlp](https://github.com/yt-dlp/yt-dlp) using your browser's YouTube login. yt-dlp access is common in open-source tools but sits outside YouTube's API terms. You run VideoMentor on your own account, at your own risk.

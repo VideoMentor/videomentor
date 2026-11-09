@@ -83,7 +83,10 @@ class Worker:
                 backup.make_backup(home)
                 backup.prune(home)
         except Exception as e:  # noqa: BLE001
-            self._error("backup", e)
+            log.exception("backup failed")
+            self.state["backup_error"] = {"where": "backup", "error": str(e)[:300], "at": db.now()}
+        else:
+            self.state["backup_error"] = None
         finally:
             self.state["backup"] = "idle"
 

@@ -4,6 +4,7 @@ import gzip
 import os
 import sqlite3
 import tarfile
+import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -178,7 +179,7 @@ def test_worker_hook_makes_a_backup_when_due_and_prunes(tmp_path, monkeypatch):
     w = Worker(load_settings())
     w.backup_tick()
     assert len(list((home / "backups").glob("library-*"))) == 14
-    assert w.state["last_error"] is None
+    assert w.state["last_error"] is None and w.state.get("backup_error") is None
 
 
 def test_worker_hook_failure_is_logged_and_never_raises(tmp_path, monkeypatch):
@@ -193,8 +194,9 @@ def test_worker_hook_failure_is_logged_and_never_raises(tmp_path, monkeypatch):
     (tmp_path / "home").mkdir(exist_ok=True)
     db.connect(tmp_path / "home" / "library.db").close()
     w.backup_tick()
-    assert w.state["last_error"]["where"] == "backup"
-    assert "disk full" in w.state["last_error"]["error"]
+    assert w.state["backup_error"]["where"] == "backup"
+    assert "disk full" in w.state["backup_error"]["error"]
+    assert w.state["last_error"] is None  # sync and prep errors are not masked
 
 
 def test_cli_backup_and_list(tmp_path, monkeypatch, capsys):
@@ -222,3 +224,66 @@ def test_status_api_has_backups(conn):
     with TestClient(create_app(settings, run_worker=False)) as c:
         c.get(f"/pair?code={settings.pair_code}", follow_redirects=False)
         assert c.get("/api/status").json()["backups"] == {"last_at": None, "count": 0, "bytes": 0}
+
+
+def test_rendered_videos_are_not_tarred(tmp_path):
+    home, _ = make_home(tmp_path)
+    (home / "training" / "videos" / "clips").mkdir(parents=True)
+    (home / "training" / "videos" / "module-1.mp4").write_bytes(b"v" * 100_000)
+    (home / "training" / "videos" / "clips" / "a.mp4").write_bytes(b"v" * 100_000)
+    backup.make_backup(home, NOW)
+    assert not list((home / "backups").glob("training-*"))  # only videos: no tar
+    (home / "training" / "m.md").write_text("module")
+    backup.make_backup(home, NOW)
+    tar = home / "backups" / "training-2026-11-09.tar.gz"
+    with tarfile.open(tar) as t:
+        names = t.getnames()
+    assert "training/m.md" in names and not any("videos" in n for n in names)
+    assert tar.stat().st_size < 50_000
+
+
+def test_live_writer_keeps_its_sidecars_and_commits(tmp_path):
+    home, live = make_home(tmp_path, wal=True)
+    try:
+        backup.make_backup(home, NOW)
+        assert (home / "library.db-wal").exists()  # never deleted by the backup
+        live.execute("UPDATE items SET title = 'After backup' WHERE id = 'yt:vid00000002'")
+        live.commit()
+        fresh = sqlite3.connect(home / "library.db")
+        assert (
+            fresh.execute("SELECT title FROM items WHERE id = 'yt:vid00000002'").fetchone()[0]
+            == "After backup"
+        )
+        fresh.close()
+    finally:
+        live.close()
+
+
+def test_a_tar_failure_still_leaves_the_database_backup(tmp_path, monkeypatch, caplog):
+    home, _ = make_home(tmp_path)
+    (home / "training").mkdir()
+    (home / "training" / "m.md").write_text("module")
+
+    def boom(*a, **k):
+        raise tarfile.TarError("nope")
+
+    monkeypatch.setattr(backup.tarfile, "open", boom)
+    path = backup.make_backup(home, NOW)
+    assert path.exists()
+    assert not list((home / "backups").glob("training-*"))
+    assert not [p for p in (home / "backups").iterdir() if p.name.startswith(".tmp-")]
+    assert "training" in caplog.text
+
+
+def test_prune_sweeps_old_temp_files(tmp_path):
+    home, _ = make_home(tmp_path)
+    d = home / "backups"
+    d.mkdir()
+    old, new = d / ".tmp-old.db-wal", d / ".tmp-new.db"
+    for p in (old, new, d / ".tmp-old.db-journal"):
+        p.write_bytes(b"x")
+    two_days = time.time() - 2 * 86400
+    for p in (old, d / ".tmp-old.db-journal"):
+        os.utime(p, (two_days, two_days))
+    assert backup.prune(home) == 2
+    assert not old.exists() and new.exists()
