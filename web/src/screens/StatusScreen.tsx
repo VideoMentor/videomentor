@@ -14,7 +14,7 @@ import { AuthError, api, isNetworkError } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import { backupLine } from '../lib/backupLine';
 import type { AiChoice, AiStatus, PairedDevice, StatusResponse } from '../lib/types';
-import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped } from '../lib/aiView';
+import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped, parseCap } from '../lib/aiView';
 import { queue } from '../state/queue';
 
 interface Props {
@@ -242,9 +242,11 @@ function AiCard({ ai, online, onChanged }: { ai: AiStatus; online: boolean; onCh
     }
   };
   const saveCap = () => {
-    const n = Number(cap);
-    if (!Number.isFinite(n) || n < 0 || n > 1000) {
-      setNote('The monthly limit must be between $0 and $1000.');
+    const n = parseCap(cap);
+    if (n === null) {
+      // Never save a blank or bad value (Number('') is 0, which would pause AI): put the saved one back.
+      setCap(current.cap_usd.toFixed(2));
+      if (cap.trim()) setNote('The monthly limit must be between $0 and $1000.');
       return;
     }
     if (n !== current.cap_usd) void save({ cap_usd: n });

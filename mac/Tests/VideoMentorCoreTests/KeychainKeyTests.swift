@@ -34,4 +34,30 @@ final class KeychainKeyTests: XCTestCase {
         XCTAssertThrowsError(try KeychainKey.save("   ", service: service))
         XCTAssertNil(KeychainKey.read(service: service))
     }
+
+    func testLookUpTellsMissingFromSaved() throws {
+        XCTAssertEqual(KeychainKey.lookUp(service: service), .missing)
+        try KeychainKey.save("sk-ant-x", service: service)
+        XCTAssertEqual(KeychainKey.lookUp(service: service), .found("sk-ant-x"))
+    }
+
+    func testStatusMapping() {
+        XCTAssertEqual(KeychainKey.result(status: errSecSuccess, data: Data("k".utf8)), .found("k"))
+        XCTAssertEqual(KeychainKey.result(status: errSecSuccess, data: Data()), .missing)
+        XCTAssertEqual(KeychainKey.result(status: errSecSuccess, data: nil), .missing)
+        XCTAssertEqual(KeychainKey.result(status: errSecItemNotFound, data: nil), .missing)
+        // Locked keychain, no UI allowed, refused access: the key may exist but can't be read.
+        XCTAssertEqual(KeychainKey.result(status: errSecInteractionNotAllowed, data: nil), .unreadable(-25308))
+        XCTAssertEqual(KeychainKey.result(status: errSecAuthFailed, data: nil), .unreadable(errSecAuthFailed))
+        XCTAssertEqual(KeychainKey.result(status: errSecInteractionNotAllowed, data: Data("k".utf8)), .unreadable(-25308))
+    }
+
+    func testUnreadableText() {
+        XCTAssertNil(KeychainKey.Lookup.found("k").unreadableText)
+        XCTAssertNil(KeychainKey.Lookup.missing.unreadableText)
+        XCTAssertEqual(KeychainKey.Lookup.unreadable(-25308).unreadableText,
+                       "Can't read the keychain (status -25308). Unlock it or check your Mac's security settings.")
+        XCTAssertEqual(KeychainKey.Lookup.found("k").key, "k")
+        XCTAssertNil(KeychainKey.Lookup.unreadable(-1).key)
+    }
 }

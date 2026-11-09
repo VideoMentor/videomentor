@@ -28,18 +28,52 @@ public enum KeychainKey {
         ]
     }
 
-    /// The saved key, or nil when there is none (or the keychain can't be read).
+    /// What a keychain read found. `unreadable` means the key may exist but the keychain
+    /// refused (locked, no UI allowed, access denied by policy): not the same as no key.
+    public enum Lookup: Sendable, Equatable {
+        case found(String)
+        case missing
+        case unreadable(OSStatus)
+
+        public var key: String? {
+            if case .found(let k) = self { return k }
+            return nil
+        }
+
+        /// The text for the AI Settings window, or nil when the read worked.
+        public var unreadableText: String? {
+            guard case .unreadable(let status) = self else { return nil }
+            return "Can't read the keychain (status \(status)). Unlock it or check your Mac's security settings."
+        }
+    }
+
+    /// Maps a `SecItemCopyMatching` result. Pure, so tests can feed it any status.
+    static func result(status: OSStatus, data: Data?) -> Lookup {
+        switch status {
+        case errSecSuccess:
+            guard let data, let key = String(data: data, encoding: .utf8), !key.isEmpty else { return .missing }
+            return .found(key)
+        case errSecItemNotFound:
+            return .missing
+        default:
+            return .unreadable(status)
+        }
+    }
+
+    /// Reads the saved key, telling a missing key from an unreadable keychain.
     /// Blocks briefly; call it off the main thread.
-    public static func read(service: String = defaultService) -> String? {
+    public static func lookUp(service: String = defaultService) -> Lookup {
         var q = query(service)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data,
-              let key = String(data: data, encoding: .utf8), !key.isEmpty
-        else { return nil }
-        return key
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        return result(status: status, data: out as? Data)
+    }
+
+    /// The saved key, or nil when there is none or the keychain can't be read.
+    public static func read(service: String = defaultService) -> String? {
+        lookUp(service: service).key
     }
 
     /// Saves the key (trimmed), replacing any saved one.

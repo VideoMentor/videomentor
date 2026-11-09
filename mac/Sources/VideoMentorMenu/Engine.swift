@@ -98,7 +98,12 @@ final class Engine: ObservableObject {
 
     private func spawn(_ info: LaunchInfo) async {
         // The keychain read blocks briefly, so it runs off the main actor. The key is never logged.
-        let key = await Task.detached { KeychainKey.read() }.value
+        let lookup = await Task.detached { KeychainKey.lookUp() }.value
+        if case .unreadable(let status) = lookup {
+            // Started without a key, as if none were saved. Only the status number is logged.
+            log.error("Can't read the API key from the keychain (status \(status)); starting without it")
+        }
+        let key = lookup.key
         guard !stopping, process == nil else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: info.program)

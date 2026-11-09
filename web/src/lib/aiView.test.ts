@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { aiLine, capShown, hidesUnprepped } from './aiView';
+import { aiLine, capShown, hidesUnprepped, parseCap } from './aiView';
 import type { AiStatus, StatusResponse } from './types';
+
+describe('parseCap', () => {
+  it('accepts a number from 0 to 1000 and nothing else', () => {
+    expect(parseCap('7.5')).toBe(7.5);
+    expect(parseCap(' 0 ')).toBe(0);
+    expect(parseCap('1000')).toBe(1000);
+    expect(parseCap('')).toBeNull();
+    expect(parseCap('   ')).toBeNull();
+    expect(parseCap('abc')).toBeNull();
+    expect(parseCap('-1')).toBeNull();
+    expect(parseCap('1001')).toBeNull();
+  });
+});
 
 const ai = (over: Partial<AiStatus> = {}): AiStatus => ({
   backend: 'claude_code',

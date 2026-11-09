@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import VideoMentorCore
 
@@ -13,26 +14,61 @@ final class AISettingsModel: ObservableObject {
 
     @Published var keyField = ""
     @Published private(set) var hasKey = false
+    /// Set when the keychain refused the read, so "No key is saved" isn't shown wrongly.
+    @Published private(set) var keyUnreadable: String?
     @Published private(set) var settings: AISettings?
     @Published var capText = ""
     @Published private(set) var keyNote: String?
     @Published private(set) var engineNote: String?
     @Published private(set) var busy = false
 
+    static let waitingText = "Waiting for the engine…"
+    static let blockedText = "Pairing code changed: restart VideoMentor"
+
+    private var watches: Set<AnyCancellable> = []
+    /// The engine became running while a call was in flight: load once that call ends.
+    private var loadPending = false
+
     init(app: AppModel) {
         self.app = app
+        // Redraw when the engine state or the poll block changes, so the controls follow them.
+        app.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &watches)
+        app.engine.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &watches)
+        // Load the settings each time the engine becomes running: when the window opens on a
+        // running engine, when a starting engine comes up, and after a key restart. @Published
+        // sends before the value is stored, so the load runs on the next turn of the main loop.
+        app.engine.$state
+            .map { if case .running = $0 { true } else { false } }
+            .removeDuplicates()
+            .sink { [weak self] running in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if running { await self.loadSettings() } else { self.engineNote = Self.waitingText }
+                }
+            }
+            .store(in: &watches)
     }
 
     /// Engine calls are off while the engine isn't running or after the code was refused.
     var canCallEngine: Bool { app.isRunning && !app.pollBlocked && !busy }
 
-    /// Reads whether a key is saved (off the main thread) and the current settings (one call).
-    func load() async {
-        hasKey = await Task.detached { KeychainKey.read() != nil }.value
-        guard canCallEngine else {
-            engineNote = app.pollBlocked ? "Pairing code changed: restart VideoMentor" : "VideoMentor isn't running."
-            return
-        }
+    /// Why engine controls are off, or nil when they're on (or a call is in flight).
+    var engineUnavailableText: String? {
+        if app.pollBlocked { return Self.blockedText }
+        if !app.isRunning { return Self.waitingText }
+        return nil
+    }
+
+    /// Reads whether a key is saved, off the main thread. The key itself is not kept.
+    func readKey() async {
+        let lookup = await Task.detached { KeychainKey.lookUp() }.value
+        hasKey = lookup.key != nil
+        keyUnreadable = lookup.unreadableText
+    }
+
+    /// One GET of the current settings.
+    private func loadSettings() async {
+        if busy { loadPending = true; return }
         await call { client in
             let s = try await client.aiSettings()
             self.apply(s)
@@ -46,6 +82,7 @@ final class AISettingsModel: ObservableObject {
         do {
             try await Task.detached { try KeychainKey.save(key) }.value
             hasKey = true
+            keyUnreadable = nil
             keyNote = "Key saved. " + restartNote()
         } catch {
             keyNote = "Couldn't save the key: \(error.localizedDescription)"
@@ -56,6 +93,7 @@ final class AISettingsModel: ObservableObject {
         do {
             try await Task.detached { try KeychainKey.delete() }.value
             hasKey = false
+            keyUnreadable = nil
             keyNote = "Key removed. " + restartNote()
         } catch {
             keyNote = "Couldn't remove the key: \(error.localizedDescription)"
@@ -76,9 +114,11 @@ final class AISettingsModel: ObservableObject {
     }
 
     func saveCap() async {
-        guard let cap = Double(capText.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "$", with: "")),
-              cap >= 0, cap <= 1000 else {
-            engineNote = "The monthly limit must be between $0 and $1000."
+        let text = capText.trimmingCharacters(in: .whitespaces)
+        guard let cap = Double(text.replacingOccurrences(of: "$", with: "")), cap >= 0, cap <= 1000 else {
+            // Never save a blank or bad value: put the saved one back.
+            if let settings { apply(settings) }
+            if !text.isEmpty { engineNote = "The monthly limit must be between $0 and $1000." }
             return
         }
         guard cap != settings?.capUSD else { return }
@@ -100,10 +140,20 @@ final class AISettingsModel: ObservableObject {
     /// One request. A refused code re-reads launch info (no network); if the code didn't change,
     /// the app stops all engine calls until it restarts.
     private func call(_ body: @escaping (StatusClient) async throws -> Void) async {
-        guard canCallEngine, let client = app.engine.client else { return }
+        guard canCallEngine, let client = app.engine.client else {
+            // Never fail silently: say why nothing was sent.
+            if let why = engineUnavailableText { engineNote = why }
+            return
+        }
         busy = true
         engineNote = nil
-        defer { busy = false }
+        defer {
+            busy = false
+            if loadPending {
+                loadPending = false
+                Task { await self.loadSettings() }
+            }
+        }
         do {
             try await body(client)
         } catch {
@@ -127,8 +177,12 @@ struct AISettingsView: View {
     var body: some View {
         Form {
             Section("API key") {
-                Text(model.hasKey ? "A key is saved" : "No key is saved")
-                    .foregroundStyle(.secondary)
+                if let unreadable = model.keyUnreadable {
+                    Text(unreadable).foregroundStyle(.red)
+                } else {
+                    Text(model.hasKey ? "A key is saved" : "No key is saved")
+                        .foregroundStyle(.secondary)
+                }
                 SecureField("Paste an Anthropic API key", text: $model.keyField)
                     .onSubmit { Task { await model.saveKey() } }
                 HStack {
@@ -174,7 +228,7 @@ struct AISettingsView: View {
                         .disabled(!model.canCallEngine)
                     if model.busy { ProgressView().controlSize(.small) }
                 }
-                if let note = model.engineNote {
+                if let note = model.engineNote ?? model.engineUnavailableText {
                     Text(note).font(.callout).textSelection(.enabled)
                 }
             }
@@ -182,6 +236,6 @@ struct AISettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
-        .task { await model.load() }
+        .task { await model.readKey() }
     }
 }

@@ -27,6 +27,14 @@ export function aiLine(status: StatusResponse | null | undefined): string {
   return 'AI: Claude Code';
 }
 
+/** The typed monthly cap, or null when it's blank, not a number, or outside $0 to $1000. */
+export function parseCap(text: string): number | null {
+  const t = text.trim().replace(/^\$/, '');
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 && n <= 1000 ? n : null;
+}
+
 /** The monthly cap only matters when the API key may be used. */
 export function capShown(choice: AiChoice): boolean {
   return choice === 'api' || choice === 'auto';
