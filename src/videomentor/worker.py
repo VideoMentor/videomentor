@@ -1,9 +1,10 @@
 """Background work inside ``vm serve``.
 
-Three threads, so a big prep backlog never delays a prioritized analysis:
+Four threads, so a big prep backlog never delays a prioritized analysis:
 - sync: Watch Later and bookmarks every ``sync_interval_hours``, or on request
 - prep: metadata enrichment, then card prep
 - analysis: prioritized items as soon as they arrive, kept items at a trickle
+- backup: a daily copy of the library, checked once an hour
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ import threading
 import time
 from datetime import UTC, datetime
 
-from . import analyze, db, llm, prep, scoring, sync, tagging
-from .config import Settings
+from . import analyze, backup, db, llm, prep, scoring, sync, tagging
+from .config import Settings, library_home
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class Worker:
             ("sync", self._sync_loop),
             ("prep", self._prep_loop),
             ("analysis", self._analysis_loop),
+            ("backup", self._backup_loop),
         ):
             t = threading.Thread(target=target, name=f"vm-{name}", daemon=True)
             t.start()
@@ -69,6 +71,26 @@ class Worker:
                 self._error("sync", e)
             self.state["sync"] = "idle"
             self.sync_now.wait(interval)
+
+    def backup_tick(self) -> None:
+        """Make and prune a backup when one is due. Never raises: a failure is only logged."""
+        try:
+            home = library_home()
+            if not (home / "library.db").exists():
+                return
+            if backup.due(home, datetime.now().astimezone()):
+                self.state["backup"] = "running"
+                backup.make_backup(home)
+                backup.prune(home)
+        except Exception as e:  # noqa: BLE001
+            self._error("backup", e)
+        finally:
+            self.state["backup"] = "idle"
+
+    def _backup_loop(self) -> None:
+        while not self.stop.is_set():
+            self.backup_tick()
+            self.stop.wait(3600)
 
     def _prep_loop(self) -> None:
         backoff = 0.0

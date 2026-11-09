@@ -17,6 +17,7 @@ from pathlib import Path
 from . import (
     analyze,
     auth,
+    backup,
     db,
     library,
     markdown,
@@ -302,6 +303,31 @@ def cmd_status(args, settings) -> None:
         )
 
 
+def _size(n: int) -> str:
+    return f"{n / 1_048_576:.1f} MB" if n >= 1_048_576 else f"{max(n, 1) / 1024:.0f} KB"
+
+
+def cmd_backup(args, settings) -> None:
+    home = library_home()
+    if args.list:
+        items = backup.listing(home)
+        if not items:
+            print("No backups yet.")
+        for path, size in items:
+            print(f"{path}  {_size(size)}")
+        return
+    if not (home / "library.db").exists():
+        sys.exit(f"No library at {home}.")
+    try:
+        path = backup.make_backup(home)
+    except (OSError, sqlite3.Error, RuntimeError) as e:
+        sys.exit(f"Backup failed: {e}")
+    removed = backup.prune(home)
+    print(f"{path}  {_size(path.stat().st_size)}")
+    if removed:
+        print(f"Removed {removed} older backup file(s).")
+
+
 def cmd_stats(args, settings) -> None:
     with db.session() as conn:
         print(usage.report(conn))
@@ -521,6 +547,10 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fn=cmd_analyze)
 
     sub.add_parser("status", help="library counts and last sync").set_defaults(fn=cmd_status)
+    p = sub.add_parser("backup", help="back up the library now, or --list the backups")
+    p.add_argument("--list", action="store_true", help="list backups, newest first")
+    p.set_defaults(fn=cmd_backup)
+
     sub.add_parser("stats", help="LLM calls, tokens and API-equivalent cost by step").set_defaults(
         fn=cmd_stats
     )

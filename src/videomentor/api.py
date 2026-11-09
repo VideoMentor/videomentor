@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from . import (
     actions,
     auth,
+    backup,
     channel_pull,
     db,
     insights,
@@ -37,7 +38,7 @@ from . import (
     usage,
     youtube_api,
 )
-from .config import Settings, load_settings, save_settings
+from .config import Settings, library_home, load_settings, save_settings
 from .worker import Worker
 
 log = logging.getLogger(__name__)
@@ -257,6 +258,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             "last_sync": sync.last_sync(c),
             "worker": worker.state if worker else None,
             "youtube_api": youtube_api.state(),
+            "backups": backup.summary(library_home()),
             "playlists_enabled": c.execute(
                 "SELECT COUNT(*) FROM playlists WHERE enabled = 1 AND gone = 0"
             ).fetchone()[0],

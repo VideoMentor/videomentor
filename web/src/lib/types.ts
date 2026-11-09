@@ -153,7 +153,14 @@ export interface DeckSource {
   label: string;
 }
 
+export interface BackupSummary {
+  last_at: string | null;
+  count: number;
+  bytes: number;
+}
+
 export interface StatusResponse {
+  backups?: BackupSummary;
   counts: Partial<StatusCounts>;
   youtube_api?: YouTubeApiState;
   playlists_enabled?: number;

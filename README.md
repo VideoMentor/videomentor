@@ -60,6 +60,7 @@ Use **Show in** in its menu to show VideoMentor in the Dock, the menu bar, or bo
 | `vm tags` | Review proposed tag merges; `--draft` suggests new ones. |
 | `vm transcripts` | Keep transcripts for analyzed videos that don't have one. |
 | `vm import-library <folder>` | Copy a library folder (for example from an older install) into `~/VideoMentor`. The original is left untouched as a backup. |
+| `vm backup [--list]` | Back up the library now (and prune old backups), or list the backups with sizes. |
 | `vm export` | Rewrite every video's Markdown notes. |
 | `vm pair [--new]` | Show the pairing link and 12-digit code for a phone; `--new` makes a new code. |
 | `vm devices [--sign-out ID \| --sign-out-all]` | List paired devices, or sign one or all out (also on Status > Paired devices). |
@@ -70,6 +71,13 @@ Use **Show in** in its menu to show VideoMentor in the Dock, the menu bar, or bo
 | `vm --version` | Version and build. |
 
 Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube and Claude requests the features need. Usage tracking (`vm stats`) keeps only token counts and costs, on your Mac, for 180 days.
+
+## Backups and restore
+VideoMentor backs up your library once a day while the app is running and keeps 14 days, in `~/VideoMentor/backups`. Each day has `library-<date>.db.gz` and, if you have training modules, `training-<date>.tar.gz`. Secrets (sign-in tokens and cookies) are not included. To restore:
+1. Quit the VideoMentor app (or stop `vm serve`).
+2. `gunzip -c ~/VideoMentor/backups/library-<date>.db.gz > ~/VideoMentor/library.db`
+3. Delete any `library.db-wal` and `library.db-shm` files in `~/VideoMentor`.
+4. Reopen the app.
 
 ## Please read: YouTube and your own use
 - VideoMentor reads YouTube two ways: the official YouTube Data API (read-only) with your own Google Cloud client, and [yt-dlp](https://github.com/yt-dlp/yt-dlp) using your browser's YouTube login. yt-dlp access is common in open-source tools but sits outside YouTube's API terms. You run VideoMentor on your own account, at your own risk.

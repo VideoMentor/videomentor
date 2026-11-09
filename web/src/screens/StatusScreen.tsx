@@ -12,6 +12,7 @@ import { DelightSettingsCard } from '../kit/delight/DelightSettingsCard';
 import { SignalSettingsScreen } from './SignalSettingsScreen';
 import { AuthError, api, isNetworkError } from '../lib/api';
 import { formatDateTime } from '../lib/format';
+import { backupLine } from '../lib/backupLine';
 import type { PairedDevice, StatusResponse } from '../lib/types';
 import { queue } from '../state/queue';
 
@@ -122,6 +123,7 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
               </div>
             ))}
           </dl>
+          <p className="muted small">{backupLine(status?.backups)}</p>
         </div>
 
         <ProgressCard online={online} />
