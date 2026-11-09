@@ -26,6 +26,17 @@ def no_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_anthropic_api(monkeypatch):
+    """Tests never reach the Anthropic API: no key, and no client left over from a test."""
+    from videomentor import llm_api
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    llm_api.set_client(None)
+    yield
+    llm_api.set_client(None)
+
+
+@pytest.fixture(autouse=True)
 def no_llm_recorder():
     """Each test starts without the usage recorder that the app and CLI install."""
     from videomentor import llm

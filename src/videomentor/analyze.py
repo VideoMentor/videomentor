@@ -222,6 +222,7 @@ def analyze_item(
             model=model,
             step="analyze",
             item_id=item_id,
+            effort="medium",
         )
         anchors = [t for t, _ in lines or []] + [c["t"] for c in item.get("chapters") or []]
         result = _clean(result, skills, anchors)

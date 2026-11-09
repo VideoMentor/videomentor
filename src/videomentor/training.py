@@ -241,7 +241,13 @@ def build(
     prompt += f"Time they have: about {minutes or 45} minutes.\n\nVideos:\n\n"
     prompt += "\n\n".join(_describe(s) for s in sources)
     raw = llm.structured(
-        prompt, system=SYSTEM, schema=SCHEMA, model=model, timeout=600, step="training"
+        prompt,
+        system=SYSTEM,
+        schema=SCHEMA,
+        model=model,
+        timeout=600,
+        step="training",
+        effort="medium",
     )
     module = validate(raw, sources)
     module.update({"tag": tag, "goal": goal, "sources": [s["id"] for s in sources]})

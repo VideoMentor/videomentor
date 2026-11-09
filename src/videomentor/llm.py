@@ -1,7 +1,8 @@
-"""Structured LLM calls through the local ``claude -p`` CLI.
+"""Structured LLM calls through the local ``claude -p`` CLI or the Anthropic API.
 
-Runs on your Claude plan, so there's no API key. Calls are stripped down: no
-tools, no MCP servers, no settings or plugins, and no saved session.
+The CLI runs on your Claude plan, so there's no API key. Calls are stripped down:
+no tools, no MCP servers, no settings or plugins, and no saved session. The API
+backend (``llm_api``) is used when the CLI is missing and ``ANTHROPIC_API_KEY`` is set.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -79,12 +81,14 @@ def structured(
     timeout: int = 300,
     step: str = "other",
     item_id: str | None = None,
+    effort: str = "low",
 ) -> dict:
     """Send one prompt and return the JSON object matching ``schema``.
 
-    Each call (ok or failed) goes to the recorder, if one is set, as one row of numbers.
+    ``effort`` applies to the API backend only. Each call (ok or failed) goes to the
+    recorder, if one is set, as one row of numbers.
     """
-    binary = claude_binary()
+    binary = _cli_or_api()
     row: dict = {
         "step": step,
         "item_id": item_id,
@@ -102,7 +106,20 @@ def structured(
         "prompt_chars": len(system) + len(prompt),
     }
     try:
-        out = _run(binary, prompt, system, schema, model, timeout, row)
+        if binary is None:
+            from videomentor import llm_api
+
+            out = llm_api.call(
+                prompt,
+                system=system,
+                schema=schema,
+                model=model,
+                effort=effort,
+                timeout=timeout,
+                row=row,
+            )
+        else:
+            out = _run(binary, prompt, system, schema, model, timeout, row)
         row["ok"] = 1
         return out
     except LLMError:
@@ -112,6 +129,20 @@ def structured(
         raise
     finally:
         _emit(row)
+
+
+def _cli_or_api() -> str | None:
+    """The claude binary, or None to use the API backend.
+
+    Interim rule until ``ai.backend()`` decides: the API runs only when the CLI is
+    missing and ``ANTHROPIC_API_KEY`` is set. Otherwise the CLI's error stands.
+    """
+    try:
+        return claude_binary()
+    except LLMError:
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return None
+        raise
 
 
 def _fail(row: dict, kind: str, message: str) -> LLMError:
