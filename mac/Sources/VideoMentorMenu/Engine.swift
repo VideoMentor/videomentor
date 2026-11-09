@@ -52,25 +52,34 @@ final class Engine: ObservableObject {
         state = .starting
         Task {
             defer { booting = false }
-            if info == nil {
-                // `LaunchInfo.load` blocks on a pipe, so keep it off the main actor.
-                let vm = Self.vm
-                do {
-                    let loaded = try await Task.detached { try LaunchInfo.load(vm: vm) }.value
-                    info = loaded
-                    client = StatusClient(port: loaded.port, pairCode: loaded.pairCode, host: Self.reachableHost(loaded.host))
-                } catch {
-                    log.error("vm launch-info failed: \(error.localizedDescription, privacy: .public)")
-                    state = .stopped(reason: "Can't find the engine. Run vm install, then open the app again.")
-                    return
-                }
-            }
             await launch()
         }
     }
 
+    /// Reads `vm launch-info` again (off the main actor: it blocks on a pipe) and rebuilds the
+    /// client, so a new pairing code is picked up. Returns false if it could not be read.
+    @discardableResult
+    func reloadLaunchInfo() async -> Bool {
+        let vm = Self.vm
+        do {
+            let loaded = try await Task.detached { try LaunchInfo.load(vm: vm) }.value
+            info = loaded
+            client = StatusClient(port: loaded.port, pairCode: loaded.pairCode, host: Self.reachableHost(loaded.host))
+            return true
+        } catch {
+            log.error("vm launch-info failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
     /// Checks the port, then adopts, reports a conflict, or spawns.
+    /// Every start and restart reads launch info fresh, so the probe never uses an old code.
     private func launch() async {
+        guard !stopping, process == nil else { return }
+        guard await reloadLaunchInfo() else {
+            state = .stopped(reason: "Can't find the engine. Run vm install, then open the app again.")
+            return
+        }
         guard !stopping, process == nil, let info, let client else { return }
         let result: Result<EngineStatus, Error>
         do { result = .success(try await client.status()) } catch { result = .failure(error) }
@@ -132,7 +141,15 @@ final class Engine: ObservableObject {
             for _ in 0..<120 {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard let self, !Task.isCancelled, self.process === p else { return }
-                if (try? await self.client?.status()) != nil {
+                guard let client = self.client else { return }
+                let result: Result<EngineStatus, Error>
+                do { result = .success(try await client.status()) } catch { result = .failure(error) }
+                switch StatusPoll.outcome(of: result) {
+                case .networkError, .otherError:
+                    continue  // Not listening yet.
+                case .ok, .unauthorized, .rateLimited:
+                    // It answers, so it's up. A refused code is the status timer's business:
+                    // never keep sending it here.
                     if self.process === p, self.state == .starting { self.state = .running(external: false) }
                     return
                 }

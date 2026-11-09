@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var status: EngineStatus?
     @Published private(set) var note: String?
+    /// Set once the engine has refused the code after a reload; cleared only by restarting the app.
+    @Published private(set) var pollBlocked = false
 
     private var refreshing = false
     private var timer: Task<Void, Never>?
@@ -78,20 +80,54 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// One status call, then `StatusPoll` decides what follows. A refused code re-reads launch
+    /// info once and tries the new code once; refused again, polling stops for good, so the
+    /// app can never lock pairing on the engine (refused codes count toward its lockout).
     func refresh() async {
-        guard !refreshing, let client = engine.client else { return }
+        guard !refreshing,
+              StatusPoll.shouldPoll(engineStopped: engineStopped, blocked: pollBlocked),
+              let client = engine.client else { return }
         refreshing = true
         defer { refreshing = false }
-        do {
-            status = try await client.status()
+        var result = await Self.call(client)
+        var action = StatusPoll.next(after: StatusPoll.outcome(of: result), reloadedSinceLastOK: false)
+        if action == .reloadLaunchInfo {
+            let oldCode = engine.info?.pairCode
+            let reloaded = await engine.reloadLaunchInfo()
+            if reloaded, engine.info?.pairCode != oldCode, let fresh = engine.client {
+                log.info("Pairing code changed on disk; using the new one")
+                result = await Self.call(fresh)
+                action = StatusPoll.next(after: StatusPoll.outcome(of: result), reloadedSinceLastOK: true)
+            } else {
+                // Same code (or unreadable): it would only be refused again, so send nothing.
+                action = .stopPolling
+            }
+        }
+        switch (action, result) {
+        case (.stopPolling, _), (.reloadLaunchInfo, _):
+            log.error("The engine refuses the pairing code; status checks stopped")
+            pollBlocked = true
+            status = nil
+        case (.keepPolling, .success(let s)):
+            status = s
             engine.noteStatus(answered: true)
-        } catch {
+        case (.keepPolling, .failure):
             status = nil
             engine.noteStatus(answered: false)
         }
     }
 
+    private static func call(_ client: StatusClient) async -> Result<EngineStatus, Error> {
+        do { return .success(try await client.status()) } catch { return .failure(error) }
+    }
+
+    private var engineStopped: Bool {
+        if case .stopped = engine.state { return true }
+        return false
+    }
+
     var statusLine: String {
+        if pollBlocked, !engineStopped { return "Pairing code changed: restart VideoMentor" }
         switch engine.state {
         case .starting:
             return StatusLine.text(running: false, status: nil, now: Date(), starting: true)
@@ -100,7 +136,7 @@ final class AppModel: ObservableObject {
         case .restarting(let seconds):
             return "Restarting in \(seconds) s · see log"
         case .stopped(let reason):
-            return "Stopped: \(reason)"
+            return StatusLine.stopped(reason: reason)
         }
     }
 
@@ -178,7 +214,7 @@ struct MenuContent: View {
         Button("Pair a Phone…") { model.pairPhone() }
             .disabled(engine.info == nil)
         Button("Sync Now") { model.syncNow() }
-            .disabled(!model.isRunning)
+            .disabled(!model.isRunning || model.pollBlocked)
         Divider()
         Toggle("Start at Login", isOn: Binding(get: { login.enabled }, set: { login.set($0) }))
         if let error = login.error {

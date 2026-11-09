@@ -31,6 +31,13 @@ public enum StatusLine {
         return parts.joined(separator: " · ")
     }
 
+    /// The status line when the engine is not running; it always points to the log.
+    public static func stopped(reason: String) -> String {
+        var r = reason.trimmingCharacters(in: .whitespaces)
+        while r.hasSuffix(".") { r.removeLast() }
+        return "Stopped: \(r). See log"
+    }
+
     /// Thousands separators that do not depend on the user's locale: 1207 becomes "1,207".
     static func grouped(_ n: Int) -> String {
         let f = NumberFormatter()
