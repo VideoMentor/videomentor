@@ -54,3 +54,7 @@ out/
 
 # Build counter (changes every build)
 .build-seq
+
+# Mac app build output
+mac/.build/
+mac/build/
