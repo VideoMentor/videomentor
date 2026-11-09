@@ -5,7 +5,7 @@
 const LOST = [/\bWL: YouTube said: The playlist does not exist/i, /\bLL: YouTube said: The playlist does not exist/i, /HTTP Error 401/i];
 
 export const LOGIN_LOST =
-  "Syncing lost its YouTube login, so Watch Later and private playlists can't be read. On the Mac, run: uv run vm sync (it saves a fresh login for the app).";
+  "Syncing lost its YouTube login, so Watch Later and private playlists can't be read. On the Mac, run: vm sync (it saves a fresh login for the app).";
 
 export function loginLost(errors: string): boolean {
   return LOST.some((re) => re.test(errors));

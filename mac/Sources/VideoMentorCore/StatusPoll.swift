@@ -37,9 +37,11 @@ public enum StatusPoll {
     /// `reloadedSinceLastOK`: launch info was already re-read since the last good answer.
     public static func next(after outcome: Outcome, reloadedSinceLastOK: Bool) -> Action {
         switch outcome {
-        case .ok, .networkError, .otherError:
+        case .ok, .networkError, .otherError, .rateLimited:
+            // A 429 is someone else's lockout; the engine only counts failed codes, so a
+            // correct code is harmless. Keep polling without reloading.
             return .keepPolling
-        case .unauthorized, .rateLimited:
+        case .unauthorized:
             return reloadedSinceLastOK ? .stopPolling : .reloadLaunchInfo
         }
     }

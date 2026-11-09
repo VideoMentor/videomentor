@@ -37,6 +37,7 @@ uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone
 
 ## Mac app
 An optional menu bar app that runs the engine for you and opens the library in a window. Build it on your Mac (needs Xcode command line tools and a code signing identity):
+From your clone, run `uv run vm install` first, before building or opening the app (`vm` is not on your PATH until then). Then build:
 ```sh
 mac/scripts/build-app.sh      # makes mac/build/VideoMentor.app, signed
 ```

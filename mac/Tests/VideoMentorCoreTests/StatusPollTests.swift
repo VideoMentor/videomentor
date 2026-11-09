@@ -21,9 +21,10 @@ final class StatusPollTests: XCTestCase {
         XCTAssertEqual(StatusPoll.next(after: .otherError, reloadedSinceLastOK: true), .keepPolling)
         // A refused code: re-read launch info once, then give up (never a second failing request).
         XCTAssertEqual(StatusPoll.next(after: .unauthorized, reloadedSinceLastOK: false), .reloadLaunchInfo)
-        XCTAssertEqual(StatusPoll.next(after: .rateLimited, reloadedSinceLastOK: false), .reloadLaunchInfo)
+        // Rate limited (429): keep polling, no reload, no stop.
+        XCTAssertEqual(StatusPoll.next(after: .rateLimited, reloadedSinceLastOK: false), .keepPolling)
         XCTAssertEqual(StatusPoll.next(after: .unauthorized, reloadedSinceLastOK: true), .stopPolling)
-        XCTAssertEqual(StatusPoll.next(after: .rateLimited, reloadedSinceLastOK: true), .stopPolling)
+        XCTAssertEqual(StatusPoll.next(after: .rateLimited, reloadedSinceLastOK: true), .keepPolling)
     }
 
     func testShouldPoll() {
