@@ -295,3 +295,48 @@ def test_structured_without_cli_or_key_keeps_cli_error(monkeypatch):
     monkeypatch.setattr(llm.shutil, "which", lambda name: None)
     with pytest.raises(llm.LLMError, match="the `claude` CLI is not on PATH"):
         llm.structured("hello", system="SYS", schema=SCHEMA, model="haiku")
+
+
+def test_no_stub_never_builds_a_real_client(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    with pytest.raises(RuntimeError, match="Anthropic API disabled in tests"):
+        call()
+
+
+def test_real_client_uses_only_the_env_key(monkeypatch):
+    seen = {}
+
+    def fake_anthropic(**kw):
+        seen.update(kw)
+        return StubClient(response())
+
+    monkeypatch.setattr(llm_api.anthropic, "Anthropic", fake_anthropic)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    assert call() == {"items": []}
+    assert seen == {"api_key": FAKE_KEY}
+
+
+def test_missing_key_raises_auth_without_a_client(monkeypatch):
+    built = []
+    monkeypatch.setattr(llm_api.anthropic, "Anthropic", lambda **kw: built.append(kw))
+    row: dict = {}
+    with pytest.raises(llm.LLMError, match="No Anthropic API key is set"):
+        call(row=row)
+    assert row["error_kind"] == "auth"
+    assert built == []
+
+
+def test_fallback_model_is_costed_at_requested_price(stub):
+    stub(response(model="claude-some-fallback-9"))
+    row: dict = {}
+    call(model="sonnet", row=row)
+    assert row["model"] == "claude-some-fallback-9"
+    assert row["cost_usd"] == pytest.approx(120 * 2 / 1e6 + 40 * 10 / 1e6)
+
+
+def test_older_sonnet_gets_no_fallback(stub):
+    client = stub(response(model="claude-sonnet-4-5"))
+    call(model="claude-sonnet-4-5")
+    assert client.beta.messages.calls == []
+    (kw,) = client.messages.calls
+    assert "fallbacks" not in kw and "betas" not in kw

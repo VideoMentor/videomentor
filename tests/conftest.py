@@ -30,7 +30,11 @@ def no_anthropic_api(monkeypatch):
     """Tests never reach the Anthropic API: no key, and no client left over from a test."""
     from videomentor import llm_api
 
+    def blocked(*a, **k):
+        raise RuntimeError("Anthropic API disabled in tests")
+
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(llm_api.anthropic, "Anthropic", blocked)
     llm_api.set_client(None)
     yield
     llm_api.set_client(None)

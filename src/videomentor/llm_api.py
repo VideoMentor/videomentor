@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -46,10 +47,18 @@ def set_client(client: Any) -> None:
     _client = client
 
 
-def _get_client() -> Any:
+def _get_client(row: dict) -> Any:
+    """The injected client, or a real one built from ``ANTHROPIC_API_KEY`` only.
+
+    The key is passed explicitly so the SDK never falls back to an auth token or a
+    profile on disk.
+    """
     global _client
     if _client is None:
-        _client = anthropic.Anthropic()
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise _fail(row, "auth", "No Anthropic API key is set")
+        _client = anthropic.Anthropic(api_key=key)
     return _client
 
 
@@ -57,8 +66,12 @@ def model_id(short: str) -> str:
     return MODELS.get(short, short)
 
 
+# Models that get the server-side refusal fallback (exact IDs; haiku has none).
+FALLBACK_MODELS = frozenset({"claude-sonnet-5-5", "claude-opus-5-5"})
+
+
 def _uses_fallbacks(mid: str) -> bool:
-    return mid.startswith(("claude-sonnet", "claude-opus"))
+    return mid in FALLBACK_MODELS
 
 
 def cost_usd(model_id: str, usage: Any) -> float | None:
@@ -118,11 +131,16 @@ def _usage(row: dict, response: Any, mid: str) -> None:
     row["output_tokens"] = getattr(usage, "output_tokens", None)
     row["cache_read_tokens"] = getattr(usage, "cache_read_input_tokens", None)
     row["cache_creation_tokens"] = getattr(usage, "cache_creation_input_tokens", None)
-    row["cost_usd"] = cost_usd(row["model"], usage)
+    # A model outside the price table (a server-side fallback, say) is costed at the
+    # requested model's price, so the monthly cap never counts a call as free.
+    cost = cost_usd(row["model"], usage)
+    row["cost_usd"] = cost if cost is not None else cost_usd(mid, usage)
 
 
-def _request(prompt: str, system: str, schema: dict, mid: str, effort: str, timeout: int) -> Any:
-    client = _get_client()
+def _request(
+    prompt: str, system: str, schema: dict, mid: str, effort: str, timeout: int, row: dict
+) -> Any:
+    client = _get_client(row)
     kw: dict = {
         "model": mid,
         "max_tokens": MAX_TOKENS,
@@ -174,7 +192,7 @@ def call(
     row["model"] = mid
     started = time.monotonic()
     try:
-        response = _request(prompt, system, schema, mid, effort, timeout)
+        response = _request(prompt, system, schema, mid, effort, timeout, row)
     except anthropic.AnthropicError as e:
         err = _api_error(row, e, timeout)
         row["duration_ms"] = int((time.monotonic() - started) * 1000)
