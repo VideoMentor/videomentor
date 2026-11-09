@@ -35,6 +35,13 @@ uv run vm sync      # first sync, from Terminal (reads your browser's YouTube lo
 uv run vm serve     # then open http://127.0.0.1:8791 on the Mac; for your phone see docs/setup.md
 ```
 
+## Mac app
+An optional menu bar app that runs the engine for you and opens the library in a window. Build it on your Mac (needs Xcode command line tools and a code signing identity):
+```sh
+mac/scripts/build-app.sh      # makes mac/build/VideoMentor.app, signed
+```
+Its menu shows the library status, opens the app window, shows the pairing link and QR code for your phone, and has a Start at Login switch. The app starts `vm serve` when it opens, so quitting the app stops its engine. It needs the `vm` tool installed (`vm install`) and macOS 14 or later.
+
 ## Commands (`vm`)
 | Command | Does |
 |---|---|

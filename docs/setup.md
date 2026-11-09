@@ -66,6 +66,9 @@ On the Mac itself, `http://127.0.0.1:8791` works without Tailscale.
 
 **Start at login:** `uv run vm install-service` installs the app as a tool and adds a login item (LaunchAgent `com.videomentor.serve`) that runs `vm serve`. Logs go to `~/VideoMentor/logs/serve.log`. `uv` must be on your PATH, and the cloned folder must stay where it is. Run it again after updating; `vm uninstall-service` removes it.
 
+## 6b. Optional: the Mac app
+Instead of running `vm serve` in Terminal, you can use the menu bar app. Run `mac/scripts/build-app.sh` to build `mac/build/VideoMentor.app`, then move it to Applications and open it. It starts the engine, shows status and the pairing link, and can start at login (a switch in its menu). Quitting the app stops its engine, so don't also run `vm serve` or the login service at the same time.
+
 ## 7. Turn on playlists
 Open the **Playlists** tab and switch on the playlists you want synced. Watch Later is always on.
 
