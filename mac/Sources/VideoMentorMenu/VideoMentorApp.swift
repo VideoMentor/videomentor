@@ -38,9 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.launch()
     }
 
-    /// Clicking the Dock icon (or opening the app again) opens the VideoMentor window.
+    /// Clicking the Dock icon (or opening the app again) always opens the VideoMentor window.
+    /// The flag is ignored: the status item or an open Pair window can count as visible.
+    /// Opening is safe to repeat (one reused window, guarded load). Before the engine is found
+    /// it opens nothing; the status line already says "Starting…" or "Can't find the engine…".
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { model.openWindow() }
+        model.openWindow()
         return true
     }
 
