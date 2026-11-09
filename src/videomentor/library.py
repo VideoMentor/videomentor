@@ -493,8 +493,12 @@ def deck(
     sort: str = "default",
     direction: str = "desc",
     start: str | None = None,
+    include_unprepped: bool = False,
 ) -> list[dict]:
     """Inbox cards for the main or music deck, from all saves or one source.
+
+    include_unprepped (for when AI can't run) also deals enriched items that card prep
+    hasn't reached, showing title, channel and thumbnail without a why-line.
 
     source: "all", "wl" (Watch Later), "playlists" (every enabled playlist, newest
     save first) or "pl:<id>" (one playlist: newest save first when the API dates are
@@ -547,7 +551,7 @@ def deck(
         order = f"{key} IS NULL, {key} {'ASC' if asc else 'DESC'}, {order}"
     rows = conn.execute(
         f"SELECT items.* FROM items{join} WHERE items.status = 'inbox' AND items.available = 1"
-        f" AND items.prep_status IN ('done', 'failed') AND {category_clause}"
+        f" AND {_dealable('items.', include_unprepped)} AND {category_clause}"
         f" AND items.id NOT IN ({excl}){date_clause}{saves_only}"
         f" ORDER BY {order} LIMIT ?",
         (*extra, *categories, *exclude, *date_args, n),
@@ -734,20 +738,27 @@ def channel_summary(
     }
 
 
-def counts(conn: sqlite3.Connection) -> dict:
+def _dealable(prefix: str = "", include_unprepped: bool = False) -> str:
+    """SQL for items whose prep lets them reach the deck."""
+    clause = f"{prefix}prep_status IN ('done', 'failed')"
+    if include_unprepped:
+        clause = (
+            f"({clause} OR ({prefix}prep_status = 'pending' AND {prefix}enrich_status = 'done'))"
+        )
+    return clause
+
+
+def counts(conn: sqlite3.Connection, include_unprepped: bool = False) -> dict:
+    """Library counts. include_unprepped counts the inbox the way the deck deals it."""
+
     def one(sql: str) -> int:
         return conn.execute(sql).fetchone()[0]
 
     main = "','".join(MAIN_CATEGORIES)
     music = "','".join(MUSIC_CATEGORIES)
-    triageable = (
-        "status = 'inbox' AND available = 1 AND prep_status IN ('done','failed')"
-        f" AND NOT ({pulled_only_sql()})"
-    )
-    pulled_only = (
-        "status = 'inbox' AND available = 1 AND prep_status IN ('done','failed')"
-        f" AND {pulled_only_sql()}"
-    )
+    dealable = _dealable("", include_unprepped)
+    triageable = f"status = 'inbox' AND available = 1 AND {dealable} AND NOT ({pulled_only_sql()})"
+    pulled_only = f"status = 'inbox' AND available = 1 AND {dealable} AND {pulled_only_sql()}"
     return {
         "total": one("SELECT COUNT(*) FROM items"),
         "inbox": one(

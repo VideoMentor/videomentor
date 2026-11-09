@@ -198,6 +198,10 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
                 return
         raise HTTPException(401, "pair this device first")
 
+    def no_ai(c: sqlite3.Connection) -> bool:
+        """True when AI can't run now, so the deck also deals items prep hasn't reached."""
+        return not ai.allowed(c, settings)[0]
+
     def wake_analysis() -> None:
         if worker:
             worker.analyze_now.set()
@@ -265,7 +269,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
     @app.get("/api/status", dependencies=[api])
     def status(c: sqlite3.Connection = Depends(conn)):
         return {
-            "counts": library.counts(c),
+            "counts": library.counts(c, include_unprepped=no_ai(c)),
             "last_sync": sync.last_sync(c),
             "worker": worker.state if worker else None,
             "ai": ai.status(c, settings),
@@ -290,7 +294,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
         if source not in ("all", "wl", "playlists") and not source.startswith(("pl:", "ch:")):
             raise HTTPException(422, "unknown source")
         ids = [x for x in exclude.split(",") if x]
-        cards = library.deck(c, deck, max(1, min(n, 50)), ids, source, sort, dir, start)
+        cards = library.deck(c, deck, max(1, min(n, 50)), ids, source, sort, dir, start, no_ai(c))
         return {"cards": cards}
 
     @app.get("/api/items/{item_id}", dependencies=[api])
@@ -497,6 +501,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             settings.ai_backend = body.backend
         if body.cap_usd is not None:
             settings.ai_monthly_cap_usd = float(body.cap_usd)
+        current_code()  # never write an old pairing code back over a new one
         save_settings(settings)
         if worker:
             worker.work_now.set()
@@ -596,7 +601,11 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
             raise HTTPException(422, "unknown source")
         n = max(10, min(cards, 200))
         ids = [x for x in exclude.split(",") if x]
-        decks = {d: library.deck(c, d, n, ids, source) for d in ("main", "music")}
+        unprepped = no_ai(c)
+        decks = {
+            d: library.deck(c, d, n, ids, source, include_unprepped=unprepped)
+            for d in ("main", "music")
+        }
         kept = library.library_items(c, "kept", None)
         archived = library.library_items(c, "archived", None)
         actions.collect(c)

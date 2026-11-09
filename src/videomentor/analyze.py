@@ -239,6 +239,11 @@ def analyze_item(
                 (result["signal"], (result.get("signal_reason") or "")[:120], item_id),
             )
         conn.commit()
+    except llm.AIUnavailable:
+        # AI was switched off: back in the queue, not failed.
+        conn.execute("UPDATE items SET analysis_status = 'queued' WHERE id = ?", (item_id,))
+        conn.commit()
+        raise
     except Exception as e:
         conn.execute(
             "UPDATE items SET analysis_status = 'failed', analysis_error = ? WHERE id = ?",

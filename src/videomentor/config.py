@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import secrets
+import threading
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -127,7 +128,15 @@ def _toml_value(value: object) -> str:
     return f'"{escaped}"'
 
 
+_save_lock = threading.Lock()
+
+
 def save_settings(settings: Settings) -> None:
+    with _save_lock:  # two PUT handlers may save at once
+        _write_settings(settings)
+
+
+def _write_settings(settings: Settings) -> None:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = ["# VideoMentor settings. See docs/setup.md for what each one does."]

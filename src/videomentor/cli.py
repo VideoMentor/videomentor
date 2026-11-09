@@ -54,6 +54,7 @@ def cmd_sync(args, settings) -> None:
 
 def cmd_prep(args, settings) -> None:
     with db.session() as conn:
+        require_ai(conn, settings)
         if args.retry_failed:
             conn.execute(
                 "UPDATE items SET prep_status = 'pending', prep_attempts = 0"
@@ -94,6 +95,7 @@ def cmd_prep(args, settings) -> None:
 
 def cmd_analyze(args, settings) -> None:
     with db.session() as conn:
+        require_ai(conn, settings)
         if args.upgrade:
             print(f"re-queued {analyze.queue_upgrades(conn)} older analyses", flush=True)
             conn.commit()

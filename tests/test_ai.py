@@ -79,7 +79,8 @@ def test_cap_ignores_claude_code_rows(conn, cli_present, monkeypatch):
 
 def test_month_resets(conn, cli_missing, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
-    month_start = datetime.now().astimezone().replace(day=1, hour=0, minute=0, second=0)
+    today = datetime.now()
+    month_start = datetime(today.year, today.month, 1).astimezone()
     last_month = (month_start - timedelta(minutes=1)).astimezone(UTC)
     add_call(conn, cost=50.0, at=last_month.isoformat(timespec="seconds"))
     add_call(conn, cost=1.25)
@@ -225,3 +226,117 @@ def test_cli_train_and_tag_draft_fail_fast_when_off(conn, monkeypatch):
         cli.cmd_tags(SimpleNamespace(draft=True), off)
     assert calls == []
     assert conn.execute("SELECT COUNT(*) FROM training_modules").fetchone()[0] == 0
+
+
+def unprepped(conn, vid):
+    item_id = add(conn, vid)
+    conn.execute(
+        "UPDATE items SET prep_status = 'pending', why = NULL, category = NULL, topics = '[]',"
+        " enrich_status = 'done' WHERE id = ?",
+        (item_id,),
+    )
+    conn.commit()
+    return item_id
+
+
+def test_deck_deals_unprepped_items_when_ai_is_off(client, conn):
+    a = unprepped(conn, "aaaaaaaaaaa")
+    cards = client.get("/api/deck?deck=main&n=10").json()["cards"]
+    assert [c["id"] for c in cards] == [a] and not cards[0]["why"]
+    assert client.get("/api/status").json()["counts"]["inbox"] == 1
+    pack = client.get("/api/offline-pack").json()
+    assert [c["id"] for c in pack["decks"]["main"]] == [a]
+
+
+def test_deck_waits_for_prep_when_ai_is_allowed(client, conn, monkeypatch):
+    unprepped(conn, "aaaaaaaaaaa")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    assert client.get("/api/deck?deck=main&n=10").json()["cards"] == []
+    assert client.get("/api/status").json()["counts"]["inbox"] == 0
+
+
+def test_put_ai_keeps_a_new_pairing_code(client):
+    on_disk = load_settings()
+    on_disk.pair_code = "1111-2222-3333"
+    from videomentor.config import save_settings
+
+    save_settings(on_disk)
+    assert client.put("/api/ai", json={"cap_usd": 7}).status_code == 200
+    assert load_settings().pair_code == "1111-2222-3333"
+
+
+def test_raising_the_cap_resumes_work(client, conn, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    client.put("/api/ai", json={"backend": "api", "cap_usd": 5})
+    add_call(conn, cost=5.0)
+    assert client.get("/api/ai").json()["paused"] is True
+    r = client.put("/api/ai", json={"cap_usd": 10}).json()
+    assert r["paused"] is False and r["reason"] is None
+    assert ai.allowed(conn, load_settings()) == (True, None)
+
+
+def test_cli_prep_and_analyze_respect_ai(conn, monkeypatch):
+    from types import SimpleNamespace
+
+    from videomentor import cli
+
+    a = unprepped(conn, "aaaaaaaaaaa")
+    calls = []
+    monkeypatch.setattr(llm, "structured", lambda *a, **k: calls.append(k))
+    off = Settings(ai_backend="off")
+    with pytest.raises(SystemExit, match="AI is off"):
+        cli.cmd_prep(SimpleNamespace(retry_failed=False, limit=None), off)
+    with pytest.raises(SystemExit, match="AI is off"):
+        cli.cmd_analyze(SimpleNamespace(upgrade=False, retry_failed=False, id=a, count=1), off)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.setattr(llm.shutil, "which", lambda name: None)
+    add_call(conn, cost=5.0)
+    with pytest.raises(SystemExit, match=r"\$5.00 limit is used"):
+        cli.cmd_prep(SimpleNamespace(retry_failed=False, limit=None), Settings(ai_backend="api"))
+    assert calls == []
+    item = db.get_item(conn, a)
+    assert item["prep_status"] == "pending" and item["prep_attempts"] == 0
+
+
+def test_month_start_across_dst(monkeypatch):
+    import time
+
+    real = ai.datetime
+
+    class Frozen(real):
+        @classmethod
+        def now(cls, tz=None):
+            return real(2026, 11, 9, 12, 0, tzinfo=tz) if tz else real(2026, 11, 9, 12, 0)
+
+    monkeypatch.setenv("TZ", "America/Chicago")
+    time.tzset()
+    monkeypatch.setattr(ai, "datetime", Frozen)
+    try:
+        # Nov 1 2026 midnight is still CDT (UTC-5); DST ends at 2am that day.
+        assert ai._month_start_utc() == "2026-11-01T05:00:00+00:00"
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_switching_off_mid_batch_counts_no_failure(conn, monkeypatch):
+    from videomentor import analyze, library, prep
+    from videomentor.sources import youtube
+
+    a = unprepped(conn, "aaaaaaaaaaa")
+
+    def off(*a, **k):
+        raise llm.AIUnavailable("AI is off")
+
+    monkeypatch.setattr(llm, "structured", off)
+    with pytest.raises(llm.AIUnavailable):
+        prep.prep_batch(conn, prep.pending(conn, 20), "haiku")
+    item = db.get_item(conn, a)
+    assert item["prep_status"] == "pending" and item["prep_attempts"] == 0
+
+    b = add(conn, "bbbbbbbbbbb")
+    library.decide(conn, b, "prioritize", "c1")
+    monkeypatch.setattr(youtube, "fetch_transcript", lambda vid, prof: None)
+    with pytest.raises(llm.AIUnavailable):
+        analyze.analyze_item(conn, db.get_item(conn, b), chrome_profile="P", model="sonnet")
+    assert db.get_item(conn, b)["analysis_status"] == "queued"

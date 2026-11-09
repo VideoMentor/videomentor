@@ -132,6 +132,8 @@ class Worker:
             try:
                 did = self.prep_tick()
                 backoff = 0.0
+            except llm.AIUnavailable:
+                backoff = 0.0  # switched off mid-pass: wait the idle interval, no error
             except llm.LLMError as e:
                 self._error("prep", e)
                 backoff = min(max(backoff * 2, 30.0), 900.0)
@@ -170,6 +172,8 @@ class Worker:
                             self.settings.signal_areas, self.settings.signal_guidance
                         ),
                     )
+                except llm.AIUnavailable:
+                    pass  # switched off mid-analysis: the item is back in the queue
                 except Exception as e:  # noqa: BLE001
                     self._error(f"analysis {item['id']}", e)
                 if not item["priority"]:

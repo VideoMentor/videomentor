@@ -88,6 +88,8 @@ def prep_batch(conn: sqlite3.Connection, items: list[dict], model: str) -> int:
     prompt += "\n\n".join(_describe(i) for i in items)
     try:
         out = llm.structured(prompt, system=SYSTEM, schema=SCHEMA, model=model, step="prep")
+    except llm.AIUnavailable:
+        raise  # AI was switched off: leave the items pending, with no failure counted
     except llm.LLMError:
         for item in items:
             _bump_failure(conn, item["id"])

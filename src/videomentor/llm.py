@@ -22,6 +22,10 @@ class LLMError(Exception):
     pass
 
 
+class AIUnavailable(LLMError):
+    """AI is off (by choice or because no backend is available): not the item's fault."""
+
+
 def claude_binary() -> str:
     path = shutil.which("claude")
     if not path:
@@ -92,7 +96,7 @@ def structured(
     settings = ai.current()
     backend = ai.backend(settings)
     if backend == "off":
-        raise LLMError(ai.off_reason(settings.ai_backend))
+        raise AIUnavailable(ai.off_reason(settings.ai_backend))
     binary = claude_binary() if backend == "claude_code" else None
     row: dict = {
         "step": step,

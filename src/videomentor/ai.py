@@ -72,7 +72,9 @@ def off_reason(choice: str) -> str:
 def _month_start_utc() -> str:
     """The 1st of this local month at midnight, in the UTC format ``llm_calls.at`` uses."""
     local = datetime.now().astimezone()
-    start = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Build midnight on the 1st as a naive local time, then let astimezone() pick the
+    # UTC offset in force on that day (it can differ from today's across a DST change).
+    start = datetime(local.year, local.month, 1).astimezone()
     return start.astimezone(UTC).isoformat(timespec="seconds")
 
 
