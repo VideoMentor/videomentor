@@ -6,14 +6,25 @@ import VideoMentorCore
 @main
 struct VideoMentorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    /// The "Show in" choice; AppModel.setShowIn writes it, and this hides the menu bar item.
+    @AppStorage(ShowIn.defaultsKey) private var showInRaw = ShowIn.defaultValue.rawValue
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: menuBarItemShown) {
             MenuContent(model: delegate.model, engine: delegate.model.engine, login: delegate.model.login)
         } label: {
             Image(nsImage: MenuIcon.image)
         }
         .menuBarExtraStyle(.menu)
+    }
+
+    private var menuBarItemShown: Binding<Bool> {
+        Binding(
+            get: { ShowIn(stored: showInRaw).showsMenuBarItem },
+            set: { inserted in
+                // Removed by the user (Cmd-drag out of the menu bar): keep the Dock icon.
+                if !inserted { delegate.model.setShowIn(.dock) }
+            })
     }
 }
 
@@ -22,9 +33,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // A menu bar app: no Dock icon (Task 4's Info.plist also sets LSUIElement).
-        NSApp.setActivationPolicy(.accessory)
+        // Info.plist sets LSUIElement, so the Dock icon appears only if the setting asks for it.
+        DockPresence.apply(model.showIn, activate: false)
         model.launch()
+    }
+
+    /// Clicking the Dock icon (or opening the app again) opens the VideoMentor window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { model.openWindow() }
+        return true
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        DockMenu.build(model: model)
     }
 
     /// Quit waits for the engine this app started to exit (SIGTERM, then SIGKILL after 5 s).
@@ -50,6 +71,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var note: String?
     /// Set once the engine has refused the code after a reload; cleared only by restarting the app.
     @Published private(set) var pollBlocked = false
+    @Published private(set) var showIn = ShowIn(stored: UserDefaults.standard.string(forKey: ShowIn.defaultsKey))
 
     private var refreshing = false
     private var timer: Task<Void, Never>?
@@ -188,6 +210,17 @@ final class AppModel: ObservableObject {
         guard let path = engine.info?.log else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
+
+    /// Stores the "Show in" choice and applies it. Runs on the next turn of the main loop, so a
+    /// menu bar menu that chose "Dock" has closed before its item is removed.
+    func setShowIn(_ mode: ShowIn) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            UserDefaults.standard.set(mode.rawValue, forKey: ShowIn.defaultsKey)
+            showIn = mode
+            DockPresence.apply(mode, activate: true)
+        }
+    }
 }
 
 struct MenuContent: View {
@@ -222,6 +255,13 @@ struct MenuContent: View {
         }
         Button("Show Log") { model.showLog() }
             .disabled(engine.info == nil)
+        Menu("Show in") {
+            ForEach(ShowIn.allCases, id: \.self) { mode in
+                Toggle(mode.title, isOn: Binding(
+                    get: { model.showIn == mode },
+                    set: { on in if on { model.setShowIn(mode) } }))
+            }
+        }
         Divider()
         Text(model.aboutLine)
         Button("Quit VideoMentor") { NSApp.terminate(nil) }

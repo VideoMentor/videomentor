@@ -137,6 +137,7 @@ final class Windows {
     }
 
     private static func present(_ window: NSWindow) {
+        if NSApp.activationPolicy() == .regular { MainMenu.ensure() }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }

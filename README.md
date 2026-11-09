@@ -43,6 +43,7 @@ mac/scripts/build-app.sh      # makes mac/build/VideoMentor.app, signed
 ```
 The script signs with `VM_SIGN_IDENTITY` if you set it (a certificate name from `security find-identity -v -p codesigning`), otherwise with the first "Apple Development" certificate in your keychain, otherwise ad-hoc. Ad-hoc apps work, but macOS may forget permissions such as Start at Login after each rebuild. The first time you open the app, macOS may ask you to confirm it: right-click it and choose Open, or use System Settings > Privacy & Security > Open Anyway.
 Its menu shows the library status, opens the app window, shows the pairing link and QR code for your phone, and has a Start at Login switch. The app starts `vm serve` when it opens, so quitting the app stops its engine. It needs the `vm` tool installed (`vm install`) and macOS 14 or later.
+Use **Show in** in its menu to show VideoMentor in the Dock, the menu bar, or both (the default). In the Dock, click the icon to open the window, or right-click it for the same menu.
 
 ## Commands (`vm`)
 | Command | Does |
