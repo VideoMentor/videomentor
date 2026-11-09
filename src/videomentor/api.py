@@ -350,10 +350,7 @@ def create_app(settings: Settings | None = None, *, run_worker: bool = True) -> 
 
     @app.post("/api/undo-batch", dependencies=[api])
     def undo_batch(body: UndoBatchIn, c: sqlite3.Connection = Depends(conn)):
-        try:
-            result = library.undo_batch(c, body.batch)
-        except library.UndoConflict as e:
-            raise HTTPException(409, str(e)) from None
+        result = library.undo_batch(c, body.batch)
         for it in result["items"]:
             markdown.write_item(c, it["id"])
         return {"undone": len(result["undone"]), "skipped": result["skipped"]}

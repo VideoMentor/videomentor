@@ -370,8 +370,11 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
   const load = () =>
     api
       .notForLearning()
-      .then(setCounts)
-      .catch(() => {});
+      .then((c) => {
+        setCounts(c);
+        return c;
+      })
+      .catch(() => null);
   useEffect(() => {
     if (online) void load();
   }, [online]);
@@ -437,7 +440,14 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
           className="secondary"
           onClick={() => {
             // The count in the question must be current: refresh it first.
-            void load().then(() => setConfirming(true));
+            void load().then((c) => {
+              if (c && c.older > 0) {
+                setNote(null);
+                setConfirming(true);
+              } else if (c) {
+                setNote('Nothing older than 30 days to archive.');
+              }
+            });
           }}
           disabled={!online || busy || !counts || counts.older === 0}>
           Archive the older ones

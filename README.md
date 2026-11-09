@@ -10,7 +10,7 @@ Free and open source under the [GNU AGPL-3.0](LICENSE).
 | Stage | What happens |
 |---|---|
 | **Collect** | Syncs Watch Later, the playlists you choose and YouTube links in your browser bookmarks. Read-only: it never changes anything on YouTube. |
-| **Triage** | One card at a time: keep, archive, analyze first, or group related videos. Undo up to 20 steps. Pull extra videos from any channel (newest, oldest or a date range, with Shorts and live streams as switches). |
+| **Triage** | One card at a time: keep, archive, analyze first, or group related videos. Undo up to 20 steps. Pull extra videos from any channel (newest, oldest or a date range, with Shorts and live streams as switches). Music and entertainment saves go to a **Not for learning** deck source, and Status can archive the ones older than 30 days in one step, with Undo. |
 | **Understand** | Kept videos get notes from their transcripts: the core idea, frameworks, one to three "try this week" actions, and a key moment with a timestamp checked against the real captions. |
 | **Apply** | An actions checklist, and training modules made of clips with exercises and a quiz. Play a module as one lesson in the app, or render it as a narrated video for your own use. |
 | **Review** | A Tags page for every tag, with its videos sortable by usefulness, length, words, notes and open actions. Insights shows your skills, keep rates, where your inbox piles up and how many tokens processing used. Home suggests one "Next up": the best video to watch, or one step to try. |
@@ -21,11 +21,39 @@ It runs as a web app on your computer and installs on your phone's home screen. 
 - macOS (Linux and Windows support is not there yet: the background service, Safari bookmarks and the narration voice are macOS-only).
 - Python 3.12 and [uv](https://docs.astral.sh/uv/), Node 20 or later.
 - A Google account with YouTube, signed in to YouTube in Chrome.
-- The [Claude Code](https://docs.anthropic.com/en/docs/claude-code) command-line tool, signed in. VideoMentor uses it for tags, scores, notes and training, on your own Claude plan.
+- Optional: AI, from the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) command-line tool (signed in) or an Anthropic API key. It writes tags, scores, notes and training. Without either, the app still syncs, triages and keeps your library. See [Choosing AI](#choosing-ai).
 - Optional: ffmpeg and Google Chrome, for rendered training videos.
 - [Tailscale](https://tailscale.com/) on your Mac and phone, to use the app on your phone (without it, it works in the Mac's browser only).
 
 Setup takes about 30 minutes: see **[docs/setup.md](docs/setup.md)**.
+
+## Choosing AI
+AI writes card summaries, tags, scores, notes and training. You choose how it runs, or turn it off.
+
+| Option | Setup | Cost |
+|---|---|---|
+| **Claude Code** | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and sign in. VideoMentor calls `claude -p`. | Counts toward your Claude plan limits. |
+| **Anthropic API key** | Set `ANTHROPIC_API_KEY` in the environment that runs `vm serve`, or paste the key in the Mac app's AI Settings (it goes in your Keychain). | Pay per use on your Anthropic account. VideoMentor records the cost of each call. |
+| **None** | Nothing to set up. | Free. |
+
+A **monthly cap** applies to the API key only. It defaults to $5. When the month's recorded cost reaches it, AI steps pause and Status says so. Change it in AI Settings in the Mac app. Claude Code uses your plan limits instead, so the cap does not apply.
+
+When both Claude Code and a key are available, VideoMentor uses Claude Code by default.
+
+**Set the choice** (Auto, Claude Code, API key or Off) in Status > AI, or in the Mac app's AI Settings. In Auto, Claude Code wins when both exist. To use an API key, set `ANTHROPIC_API_KEY` for headless use, or paste it in the Mac app.
+
+**Privacy:** with an API key, prompts go to Anthropic's API under your own account. VideoMentor never stores the key: the Mac app keeps it in your Keychain and passes it to the engine when it starts.
+
+What works without AI:
+
+| Works | Needs AI (API key or Claude Code) |
+|---|---|
+| Sync Watch Later, playlists and bookmarks | Card summaries, topics and tags |
+| Swipe deck with title, channel, length, description and thumbnail | Signal score (cards fall back to "not scored") |
+| Library, Ready, playlists, channel pulls | Notes: core idea, frameworks, actions, key moment |
+| Offline pack, pairing, phone and iPad | Actions list and Next up "Apply next" |
+| Lesson player for existing modules | Building training modules, tag merge suggestions |
+| Insights counts that don't depend on AI | Skills report, token use |
 
 ## Quick start
 ```sh
@@ -70,7 +98,7 @@ Use **Show in** in its menu to show VideoMentor in the Dock, the menu bar, or bo
 | `vm install-service` / `uninstall-service` | Start `vm serve` at login (macOS). |
 | `vm --version` | Version and build. |
 
-Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube and Claude requests the features need. Usage tracking (`vm stats`) keeps only token counts and costs, on your Mac, for 180 days.
+Your library lives in `~/VideoMentor/` (set `VM_HOME` to move it). Nothing in it is ever sent anywhere except the YouTube requests and the AI requests (Claude Code or the Anthropic API, as you choose) that the features need. Usage tracking (`vm stats`) keeps only token counts and costs, on your Mac, for 180 days.
 
 ## Backups and restore
 VideoMentor backs up your library once a day while the app is running and keeps 14 days, in `~/VideoMentor/backups`. Each day has `library-<date>.db.gz` and, if you have training modules, `training-<date>.tar.gz` (rendered videos are left out). Sign-ins (tokens and cookies) are not included. To restore:

@@ -5,7 +5,9 @@ About 30 minutes, once. Everything runs on your own Mac with your own accounts.
 ## 1. Install the tools
 1. **Python tools:** install [uv](https://docs.astral.sh/uv/) (it installs Python 3.12 for you).
 2. **Node 20 or later**, for building the web app (for example `brew install node`).
-3. **Claude Code**: [install guide](https://docs.anthropic.com/en/docs/claude-code). Run `claude` once in Terminal to sign in, and check that `which claude` prints a path. VideoMentor calls the `claude` command for tags, scores, notes and training, on your own Claude plan.
+3. **AI (optional)**: pick one, or skip it. The app still syncs, triages and keeps your library without AI. See [Choosing AI](../README.md#choosing-ai) for what AI adds.
+   - **Claude Code**: [install guide](https://docs.anthropic.com/en/docs/claude-code). Run `claude` once in Terminal to sign in, and check that `which claude` prints a path. VideoMentor calls the `claude` command for tags, scores, notes and training, on your own Claude plan.
+   - **Anthropic API key**: set `ANTHROPIC_API_KEY` in the environment that runs `vm serve`, or paste it in the Mac app's AI Settings. Pay per use, with a monthly cap (default $5).
 4. **Tailscale**, to use the app on your phone: [download](https://tailscale.com/download) for your Mac and your phone, signed in to the same account. The app only listens on your Mac itself, so without Tailscale it works in the Mac's browser only.
 5. **Optional, for rendered training videos:** `brew install ffmpeg`, and Google Chrome.
 

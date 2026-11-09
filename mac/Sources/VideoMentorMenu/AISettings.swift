@@ -23,6 +23,7 @@ final class AISettingsModel: ObservableObject {
     @Published private(set) var busy = false
 
     static let waitingText = "Waiting for the engine…"
+    static let stoppedText = "VideoMentor's engine is stopped."
     static let blockedText = "Pairing code changed: restart VideoMentor"
 
     private var watches: Set<AnyCancellable> = []
@@ -43,7 +44,7 @@ final class AISettingsModel: ObservableObject {
             .sink { [weak self] running in
                 Task { @MainActor in
                     guard let self else { return }
-                    if running { await self.loadSettings() } else { self.engineNote = Self.waitingText }
+                    if running { await self.loadSettings() } else { self.engineNote = self.notRunningText }
                 }
             }
             .store(in: &watches)
@@ -52,10 +53,16 @@ final class AISettingsModel: ObservableObject {
     /// Engine calls are off while the engine isn't running or after the code was refused.
     var canCallEngine: Bool { app.isRunning && !app.pollBlocked && !busy }
 
+    /// Stopped is final until someone restarts it; starting and restarting are brief waits.
+    private var notRunningText: String {
+        if case .stopped = app.engine.state { return Self.stoppedText }
+        return Self.waitingText
+    }
+
     /// Why engine controls are off, or nil when they're on (or a call is in flight).
     var engineUnavailableText: String? {
         if app.pollBlocked { return Self.blockedText }
-        if !app.isRunning { return Self.waitingText }
+        if !app.isRunning { return notRunningText }
         return nil
     }
 
