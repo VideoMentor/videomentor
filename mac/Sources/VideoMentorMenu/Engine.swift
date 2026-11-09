@@ -92,16 +92,21 @@ final class Engine: ObservableObject {
             log.error("Port \(info.port) answers but refuses the pairing code")
             state = .stopped(reason: "Port \(info.port) is used by another app")
         case .free:
-            spawn(info)
+            await spawn(info)
         }
     }
 
-    private func spawn(_ info: LaunchInfo) {
+    private func spawn(_ info: LaunchInfo) async {
+        // The keychain read blocks briefly, so it runs off the main actor. The key is never logged.
+        let key = await Task.detached { KeychainKey.read() }.value
+        guard !stopping, process == nil else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: info.program)
         p.arguments = info.args
         // The launch-info environment wins; HOME, USER and the like come from the app.
-        p.environment = ProcessInfo.processInfo.environment.merging(info.env) { _, new in new }
+        // A key saved in AI Settings goes in as ANTHROPIC_API_KEY.
+        p.environment = childEnvironment(
+            base: ProcessInfo.processInfo.environment.merging(info.env) { _, new in new }, key: key)
         p.standardInput = FileHandle.nullDevice
         let logHandle: FileHandle
         do {
@@ -197,11 +202,29 @@ final class Engine: ObservableObject {
                 guard !stopping, process == nil, case .running(external: true) = state,
                       PortProbe.classify(result) == .free, let info else { return }
                 log.info("The adopted engine stopped; starting our own")
-                spawn(info)
+                await spawn(info)
             }
         default:
             break
         }
+    }
+
+    enum KeyRestart: Equatable {
+        /// Our own child is restarting and will read the key as it starts.
+        case restarting
+        /// An engine this app adopted: it can't get the key until VideoMentor is restarted.
+        case external
+        /// No child right now; the next start reads the key anyway.
+        case notRunning
+    }
+
+    /// After the key is saved or removed: restart only a child this app owns.
+    func restartForKeyChange() -> KeyRestart {
+        if case .running(external: true) = state { return .external }
+        guard ownsChild else { return .notRunning }
+        log.info("Restarting the engine for a new API key setting")
+        stop { [weak self] in self?.start() }
+        return .restarting
     }
 
     /// Stops the child this app started: SIGTERM, then SIGKILL after 5 s.

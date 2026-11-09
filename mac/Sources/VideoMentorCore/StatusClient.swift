@@ -90,11 +90,17 @@ public final class StatusClient: Sendable {
         self.session = session
     }
 
-    private func send(_ path: String, method: String = "GET") async throws -> Data {
+    private func send(
+        _ path: String, method: String = "GET", json: [String: Any]? = nil, timeout: TimeInterval = 10
+    ) async throws -> Data {
         var request = URLRequest(url: base.appendingPathComponent(path))
         request.httpMethod = method
-        request.timeoutInterval = 10
+        request.timeoutInterval = timeout
         request.setValue("Bearer \(pairCode)", forHTTPHeaderField: "Authorization")
+        if let json {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: json)
+        }
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw HTTPError(status: http.statusCode)
@@ -108,6 +114,26 @@ public final class StatusClient: Sendable {
 
     public func syncNow() async throws {
         _ = try await send("api/sync", method: "POST")
+    }
+
+    // AI settings. One call per user action: a refused code (401) or the lockout (429) is
+    // thrown to the caller and never retried here.
+
+    public func aiSettings() async throws -> AISettings {
+        try JSONDecoder().decode(AISettings.self, from: try await send("api/ai"))
+    }
+
+    /// Changes the choice, the monthly cap, or both; only what is passed is sent.
+    public func setAI(choice: AIChoice? = nil, capUSD: Double? = nil) async throws -> AISettings {
+        var body: [String: Any] = [:]
+        if let choice { body["backend"] = choice.rawValue }
+        if let capUSD { body["cap_usd"] = capUSD }
+        return try JSONDecoder().decode(AISettings.self, from: try await send("api/ai", method: "PUT", json: body))
+    }
+
+    /// One small model call on the current backend. It can take a while, so it waits up to 90 s.
+    public func checkAI() async throws -> AICheck {
+        try JSONDecoder().decode(AICheck.self, from: try await send("api/ai/check", method: "POST", json: [:], timeout: 90))
     }
 
     public func deviceCount() async throws -> Int {

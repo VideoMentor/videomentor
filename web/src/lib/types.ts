@@ -159,7 +159,28 @@ export interface BackupSummary {
   bytes: number;
 }
 
+export type AiBackend = 'claude_code' | 'api' | 'off';
+export type AiChoice = 'auto' | AiBackend;
+
+/** GET/PUT /api/ai and status.ai. `backend` is what `choice` resolves to right now. */
+export interface AiStatus {
+  backend: AiBackend;
+  choice: AiChoice;
+  cap_usd: number;
+  month_cost_usd: number;
+  /** True whenever `reason` is set: AI is off or this month's cap is used. */
+  paused: boolean;
+  reason: string | null;
+}
+
+export interface AiCheck {
+  ok: boolean;
+  backend: AiBackend;
+  message: string;
+}
+
 export interface StatusResponse {
+  ai?: AiStatus;
   backups?: BackupSummary;
   counts: Partial<StatusCounts>;
   youtube_api?: YouTubeApiState;

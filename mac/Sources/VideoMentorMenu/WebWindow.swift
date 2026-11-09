@@ -100,11 +100,12 @@ struct WebView: NSViewRepresentable {
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 }
 
-/// Keeps the app's two windows around so reopening them is instant and keeps their state.
+/// Keeps the app's windows around so reopening them is instant and keeps their state.
 @MainActor
 final class Windows {
     private var web: NSWindow?
     private var pair: NSWindow?
+    private var ai: NSWindow?
 
     func showWeb(model: WebModel) {
         if web == nil {
@@ -123,6 +124,17 @@ final class Windows {
             pair!.contentViewController = NSHostingController(rootView: AnyView(view))
         }
         Self.present(pair!)
+    }
+
+    func showAISettings<V: View>(_ view: V) {
+        if ai == nil {
+            ai = Self.make(title: "AI Settings", size: NSSize(width: 460, height: 520),
+                           content: NSHostingController(rootView: AnyView(view)), autosave: "VideoMentorAI")
+        } else {
+            // Fresh content each time, so the key state and settings are read again.
+            ai!.contentViewController = NSHostingController(rootView: AnyView(view))
+        }
+        Self.present(ai!)
     }
 
     private static func make(title: String, size: NSSize, content: NSViewController, autosave: String) -> NSWindow {

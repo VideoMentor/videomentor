@@ -13,7 +13,8 @@ import { SignalSettingsScreen } from './SignalSettingsScreen';
 import { AuthError, api, isNetworkError } from '../lib/api';
 import { formatDateTime } from '../lib/format';
 import { backupLine } from '../lib/backupLine';
-import type { PairedDevice, StatusResponse } from '../lib/types';
+import type { AiChoice, AiStatus, PairedDevice, StatusResponse } from '../lib/types';
+import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped } from '../lib/aiView';
 import { queue } from '../state/queue';
 
 interface Props {
@@ -116,7 +117,7 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
         <div className="card-block">
           <h4>Library</h4>
           <dl className="counts">
-            {COUNT_LABELS.map(([key, label]) => (
+            {COUNT_LABELS.filter(([key]) => key !== 'unprepped' || !hidesUnprepped(status)).map(([key, label]) => (
               <div key={key}>
                 <dt>{label}</dt>
                 <dd>{status?.counts?.[key] ?? '—'}</dd>
@@ -126,6 +127,7 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
           <p className="muted small">{backupLine(status?.backups)}</p>
         </div>
 
+        {status?.ai && <AiCard ai={status.ai} online={online} onChanged={onRefresh} />}
         <ProgressCard online={online} />
         <OfflinePackCard online={online} />
         <StartScreenCard />
@@ -210,6 +212,99 @@ export function StatusScreen({ status, statusError, online, queued, flushing, on
         </p>
       </div>
     </section>
+  );
+}
+
+/** Which AI backend runs, the monthly cap for the API key, and a one-call check. */
+function AiCard({ ai, online, onChanged }: { ai: AiStatus; online: boolean; onChanged(): void }) {
+  const [current, setCurrent] = useState(ai);
+  const [cap, setCap] = useState(ai.cap_usd.toFixed(2));
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => setCurrent(ai), [ai]);
+  // Only a changed cap resets the field, so a status refresh doesn't wipe what's being typed.
+  useEffect(() => setCap(ai.cap_usd.toFixed(2)), [ai.cap_usd]);
+
+  const errText = (err: unknown) =>
+    isNetworkError(err) ? 'This needs a connection to your Mac.' : (err as Error).message;
+
+  // One request per user action; a refused or failed call is shown, never retried.
+  const save = async (change: { backend?: AiChoice; cap_usd?: number }) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      setCurrent(await api.saveAi(change));
+      onChanged();
+    } catch (err) {
+      if (!(err instanceof AuthError)) setNote(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveCap = () => {
+    const n = Number(cap);
+    if (!Number.isFinite(n) || n < 0 || n > 1000) {
+      setNote('The monthly limit must be between $0 and $1000.');
+      return;
+    }
+    if (n !== current.cap_usd) void save({ cap_usd: n });
+  };
+  const test = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      setNote((await api.checkAi()).message);
+    } catch (err) {
+      if (!(err instanceof AuthError)) setNote(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card-block start-card">
+      <h4>AI</h4>
+      <p>{aiLine({ counts: {}, last_sync: null, ai: current })}</p>
+      <label className="lib-select">
+        <span>Use</span>
+        <select
+          value={current.choice}
+          disabled={!online || busy}
+          onChange={(e) => void save({ backend: e.target.value as AiChoice })}
+        >
+          {AI_CHOICES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {capShown(current.choice) && (
+        <label className="lib-select">
+          <span>Monthly limit for the API key ($)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={1000}
+            step="0.5"
+            value={cap}
+            disabled={!online || busy}
+            onChange={(e) => setCap(e.target.value)}
+            onBlur={saveCap}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
+          />
+        </label>
+      )}
+      <button className="secondary" onClick={() => void test()} disabled={!online || busy}>
+        {busy ? 'Working…' : 'Test'}
+      </button>
+      {note && <p className="note small">{note}</p>}
+      {current.backend === 'off' && <p className="muted small">{AI_OFF_ADDS}</p>}
+      <p className="muted small">The API key itself is set in the Mac app, under AI Settings.</p>
+    </div>
   );
 }
 

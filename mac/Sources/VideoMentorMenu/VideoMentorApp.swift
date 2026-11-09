@@ -142,6 +142,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// An AI Settings call got a 401. Like the status timer: re-read launch info once (no
+    /// request); if the code is the same, stop all engine calls until the app restarts.
+    /// Returns true when a new code was found, so the user's next click may try again.
+    func noteRefusedCode() async -> Bool {
+        let oldCode = engine.info?.pairCode
+        if await engine.reloadLaunchInfo(), engine.info?.pairCode != oldCode {
+            log.info("Pairing code changed on disk; using the new one")
+            return true
+        }
+        log.error("The engine refuses the pairing code; engine calls stopped")
+        pollBlocked = true
+        status = nil
+        return false
+    }
+
     private static func call(_ client: StatusClient) async -> Result<EngineStatus, Error> {
         do { return .success(try await client.status()) } catch { return .failure(error) }
     }
@@ -193,6 +208,10 @@ final class AppModel: ObservableObject {
     func pairPhone() {
         guard let info = engine.info else { return }
         windows.showPair(PairView(info: info))
+    }
+
+    func openAISettings() {
+        windows.showAISettings(AISettingsView(model: AISettingsModel(app: self)))
     }
 
     func syncNow() {
@@ -258,6 +277,7 @@ struct MenuContent: View {
         }
         Button("Show Log") { model.showLog() }
             .disabled(engine.info == nil)
+        Button("AI Settings…") { model.openAISettings() }
         Menu("Show in") {
             ForEach(ShowIn.allCases, id: \.self) { mode in
                 Toggle(mode.title, isOn: Binding(

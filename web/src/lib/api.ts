@@ -1,6 +1,9 @@
 // Thin client for the VideoMentor API. Auth is the httpOnly session cookie set
 // by GET /pair?code=..., so every request goes same-origin with credentials.
 import type {
+  AiCheck,
+  AiChoice,
+  AiStatus,
   Card,
   ChannelSummary,
   DecisionPayload,
@@ -255,6 +258,13 @@ export const api = {
   settings: (signal?: AbortSignal) => request<SignalSettings>('/api/settings', { signal }),
 
   saveSettings: (s: SignalSettings) => request<SignalSettings>('/api/settings', { method: 'PUT', body: s }),
+
+  ai: (signal?: AbortSignal) => request<AiStatus>('/api/ai', { signal }),
+
+  saveAi: (change: { backend?: AiChoice; cap_usd?: number }) =>
+    request<AiStatus>('/api/ai', { method: 'PUT', body: change }),
+
+  checkAi: () => request<AiCheck>('/api/ai/check', { method: 'POST', body: {} }),
 
   rescore: () => request<{ queued: number }>('/api/signal/rescore', { method: 'POST', body: {} }),
 

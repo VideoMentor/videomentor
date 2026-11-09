@@ -122,6 +122,7 @@ enum DockMenu {
         menu.addItem(ActionMenuItem("Pair a Phone…", enabled: engine.info != nil) { model.pairPhone() })
         menu.addItem(ActionMenuItem("Sync Now", enabled: model.isRunning && !model.pollBlocked) { model.syncNow() })
         menu.addItem(ActionMenuItem("Show Log", enabled: engine.info != nil) { model.showLog() })
+        menu.addItem(ActionMenuItem("AI Settings…") { model.openAISettings() })
         menu.addItem(.separator())
 
         let showIn = NSMenuItem(title: "Show in", action: nil, keyEquivalent: "")
