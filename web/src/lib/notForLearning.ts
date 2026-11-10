@@ -15,6 +15,14 @@ export function nlLine(c: NotForLearning, days: number): string {
   return `${c.inbox.toLocaleString()} waiting, ${c.older.toLocaleString()} older than ${days} days`;
 }
 
+/** Which saves a bulk archive covers: the ones older than OLDER_THAN_DAYS, or all of them. */
+export type ArchiveScope = 'older' | 'all';
+
+/** How many videos the scope covers, and the age limit to send (0 days means all). */
+export function archivePlan(c: NotForLearning, scope: ArchiveScope): { count: number; days: number } {
+  return scope === 'all' ? { count: c.inbox, days: 0 } : { count: c.older, days: OLDER_THAN_DAYS };
+}
+
 export function archiveQuestion(n: number): string {
   return `Archive ${n.toLocaleString()} ${n === 1 ? 'video' : 'videos'}? You can undo this.`;
 }

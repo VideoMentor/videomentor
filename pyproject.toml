@@ -1,6 +1,6 @@
 [project]
 name = "videomentor"
-version = "0.16.0"
+version = "0.16.1"
 description = "Triage saved YouTube videos fast and turn keepers into business learnings."
 readme = "README.md"
 requires-python = ">=3.12"

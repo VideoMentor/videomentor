@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryStorage } from './queue';
-import { LAST_BATCH_KEY, archiveQuestion, broughtBackLine, clearLastBatch, consumeLegacyDeckKey, nlLine, readLastBatch, saveLastBatch } from './notForLearning';
+import { LAST_BATCH_KEY, archivePlan, archiveQuestion, broughtBackLine, clearLastBatch, consumeLegacyDeckKey, nlLine, readLastBatch, saveLastBatch } from './notForLearning';
 
 describe('not for learning text', () => {
+  it('plans the older ones or all of them', () => {
+    const c = { inbox: 462, older: 4 };
+    expect(archivePlan(c, 'older')).toEqual({ count: 4, days: 30 });
+    expect(archivePlan(c, 'all')).toEqual({ count: 462, days: 0 });
+  });
+
   it('says how many are waiting and how many are older', () => {
     expect(nlLine({ inbox: 462, older: 410 }, 30)).toBe('462 waiting, 410 older than 30 days');
     expect(nlLine({ inbox: 1, older: 0 }, 30)).toBe('1 waiting, 0 older than 30 days');

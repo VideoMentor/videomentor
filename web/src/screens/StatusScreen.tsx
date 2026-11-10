@@ -16,7 +16,7 @@ import { backupLine } from '../lib/backupLine';
 import type { AiChoice, AiStatus, PairedDevice, StatusResponse } from '../lib/types';
 import { AI_CHOICES, AI_OFF_ADDS, aiLine, capShown, hidesUnprepped, parseCap } from '../lib/aiView';
 import { queue } from '../state/queue';
-import { OLDER_THAN_DAYS, archiveQuestion, broughtBackLine, clearLastBatch, nlLine, readLastBatch, saveLastBatch, type LastBatch } from '../lib/notForLearning';
+import { OLDER_THAN_DAYS, archivePlan, archiveQuestion, broughtBackLine, clearLastBatch, nlLine, readLastBatch, saveLastBatch, type ArchiveScope, type LastBatch } from '../lib/notForLearning';
 import { storage } from '../state/storage';
 import type { NotForLearning } from '../lib/types';
 
@@ -364,7 +364,7 @@ function StartScreenCard() {
 function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(): void }) {
   const [counts, setCounts] = useState<NotForLearning | null>(null);
   const [last, setLast] = useState<LastBatch | null>(() => readLastBatch(storage));
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<ArchiveScope | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const load = () =>
@@ -381,18 +381,19 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
 
   const errText = (err: unknown) => (isNetworkError(err) ? 'This needs a connection to your Mac.' : (err as Error).message);
 
-  const archive = async () => {
+  const archive = async (scope: ArchiveScope) => {
+    if (!counts) return;
     setBusy(true);
     setNote(null);
     try {
-      const r = await api.archiveNotForLearning(OLDER_THAN_DAYS);
-      setConfirming(false);
+      const r = await api.archiveNotForLearning(archivePlan(counts, scope).days);
+      setConfirming(null);
       if (r.archived > 0) {
         const b = { batch: r.batch, archived: r.archived };
         saveLastBatch(storage, b);
         setLast(b);
       } else {
-        setNote('Nothing older to archive.');
+        setNote('Nothing to archive.');
       }
       onChanged();
       void load();
@@ -427,31 +428,36 @@ function NotForLearningCard({ online, onChanged }: { online: boolean; onChanged(
       <p>{counts ? nlLine(counts, OLDER_THAN_DAYS) : online ? 'Loading…' : 'Shows when you have signal.'}</p>
       {confirming && counts ? (
         <>
-          <p className="note">{archiveQuestion(counts.older)}</p>
-          <button className="primary" onClick={() => void archive()} disabled={!online || busy}>
-            {busy ? 'Archiving…' : `Archive ${counts.older.toLocaleString()}`}
+          <p className="note">{archiveQuestion(archivePlan(counts, confirming).count)}</p>
+          <button className="primary" onClick={() => void archive(confirming)} disabled={!online || busy}>
+            {busy ? 'Archiving…' : `Archive ${archivePlan(counts, confirming).count.toLocaleString()}`}
           </button>{' '}
-          <button className="secondary" onClick={() => setConfirming(false)} disabled={busy}>
+          <button className="secondary" onClick={() => setConfirming(null)} disabled={busy}>
             Cancel
           </button>
         </>
       ) : (
-        <button
-          className="secondary"
-          onClick={() => {
-            // The count in the question must be current: refresh it first.
-            void load().then((c) => {
-              if (c && c.older > 0) {
-                setNote(null);
-                setConfirming(true);
-              } else if (c) {
-                setNote('Nothing older than 30 days to archive.');
-              }
-            });
-          }}
-          disabled={!online || busy || !counts || counts.older === 0}>
-          Archive the older ones
-        </button>
+        <>
+          {(['older', 'all'] as const).map((scope) => (
+            <button
+              key={scope}
+              className="secondary"
+              onClick={() => {
+                // The count in the question must be current: refresh it first.
+                void load().then((c) => {
+                  if (c && archivePlan(c, scope).count > 0) {
+                    setNote(null);
+                    setConfirming(scope);
+                  } else if (c) {
+                    setNote(scope === 'all' ? 'Nothing to archive.' : 'Nothing older than 30 days to archive.');
+                  }
+                });
+              }}
+              disabled={!online || busy || !counts || archivePlan(counts, scope).count === 0}>
+              {scope === 'all' ? 'Archive all of them' : 'Archive the older ones'}
+            </button>
+          ))}
+        </>
       )}
       {last && (
         <p className="note">
