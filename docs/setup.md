@@ -28,6 +28,13 @@ watch_later_profile = "Profile 1"
 ```
 The file is created the first time you run any `vm` command.
 
+**Keep the login working:** the app's background engine uses a saved copy of that login, refreshed each time you run `vm sync` from Terminal. Google refreshes the login of any Chrome window that is open on YouTube, which cancels older copies, so a copy from the profile you browse in stops working within hours. The fix is a profile used only for VideoMentor:
+1. In Chrome, add a profile and choose **Continue without an account** (no Chrome sync needed).
+2. In that window, sign in on youtube.com and pick the channel that owns your playlists.
+3. Close that window and leave it closed, set `watch_later_profile` to its folder name, then run `vm sync`.
+
+`vm youtube-login` never opens that profile. It opens the default browser, or the profile you name with `signin_profile = "Profile 1"`.
+
 **Safari bookmarks:** YouTube links in Safari bookmarks are read too. macOS only allows that if your Terminal app has **Full Disk Access** (System Settings > Privacy & Security > Full Disk Access). Without it, Safari bookmarks are skipped. To turn them off, set `bookmark_safari = false`.
 
 ## 4. YouTube Data API (read-only)

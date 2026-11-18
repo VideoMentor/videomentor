@@ -22,8 +22,12 @@ def library_home() -> Path:
 
 @dataclass
 class Settings:
-    # Chrome profile whose YouTube login reads Watch Later.
+    # Chrome profile whose YouTube login reads Watch Later. Best kept closed: an open
+    # profile lets Google refresh its login, which cancels the copy the engine saved.
     watch_later_profile: str = "Default"
+    # Chrome profile that opens Google sign-in pages (vm youtube-login). Empty means
+    # the default browser. Never the Watch Later profile, so that one can stay closed.
+    signin_profile: str = ""
     # Chrome profiles scanned for YouTube bookmarks; "*" means every profile.
     bookmark_chrome_profiles: list[str] = field(default_factory=lambda: ["*"])
     bookmark_safari: bool = True

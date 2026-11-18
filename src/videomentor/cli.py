@@ -152,28 +152,41 @@ def cmd_analyze(args, settings) -> None:
 
 
 def cmd_youtube_login(args, settings) -> None:
-    """Sign in to the YouTube Data API (read-only). Opens Chrome in the Watch Later profile."""
+    """Sign in to the YouTube Data API (read-only).
+
+    Opens the sign-in page in `signin_profile`, or the default browser. Never in the
+    Watch Later profile: opening it lets Google refresh that login, which cancels the
+    copy the background engine reads.
+    """
 
     def open_url(url: str) -> None:
-        print("Opening Google sign-in in Chrome", f"({settings.watch_later_profile})...")
-        print(f"If nothing opens, paste this into that Chrome profile:\n{url}\n", flush=True)
-        try:
-            subprocess.run(
-                [
-                    "open",
-                    "-na",
-                    "Google Chrome",
-                    "--args",
-                    f"--profile-directory={settings.watch_later_profile}",
-                    url,
-                ],
-                check=True,
-                capture_output=True,
-            )
-        except (OSError, subprocess.CalledProcessError):
-            import webbrowser
+        profile = settings.signin_profile
+        where = f"Chrome ({profile})" if profile else "your default browser"
+        print(f"Opening Google sign-in in {where}...")
+        print(
+            f"If nothing opens, paste this into a browser signed in to YouTube:\n{url}\n",
+            flush=True,
+        )
+        if profile:
+            try:
+                subprocess.run(
+                    [
+                        "open",
+                        "-na",
+                        "Google Chrome",
+                        "--args",
+                        f"--profile-directory={profile}",
+                        url,
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+                return
+            except (OSError, subprocess.CalledProcessError):
+                pass
+        import webbrowser
 
-            webbrowser.open(url)
+        webbrowser.open(url)
 
     try:
         st = youtube_api.login(open_url)
